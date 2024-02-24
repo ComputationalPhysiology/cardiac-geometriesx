@@ -7,6 +7,14 @@ import dolfinx
 import gmsh
 import meshio
 
+import tempfile
+
+
+def handle_mesh_name(mesh_name: str = "") -> Path:
+    if mesh_name == "":
+        fd, mesh_name = tempfile.mkstemp(suffix=".msh")
+    return Path(mesh_name).with_suffix(".msh")
+
 
 logger = get_logger()
 
@@ -69,6 +77,7 @@ def gmsh2dolfin(msh_file):
     mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
     with dolfinx.io.XDMFFile(comm, "triangle_mesh.xdmf", "r") as xdmf:
         ffun = xdmf.read_meshtags(mesh, name="Grid")
+    ffun.name = "Facet tags"
 
     mesh.topology.create_connectivity(mesh.topology.dim - 2, mesh.topology.dim)
     with dolfinx.io.XDMFFile(comm, "line_mesh.xdmf", "r") as xdmf:
@@ -81,8 +90,62 @@ def gmsh2dolfin(msh_file):
     return GMshGeometry(mesh, cfun, ffun, efun, vfun, markers)
 
 
-def create_benchmark_ellipsoid_mesh_gmsh(
-    mesh_name,
+def lv_ellipsoid_flat_base(
+    mesh_name: str = "",
+    r_short_endo: float = 7.0,
+    r_short_epi: float = 10.0,
+    r_long_endo: float = 17.0,
+    r_long_epi: float = 20.0,
+    quota_base: float = -5.0,
+    psize: float = 3.0,
+    ndiv: float = 1.0,
+) -> Path:
+    """Create an LV ellipsoids with a flat base
+
+    Parameters
+    ----------
+    mesh_name : str, optional
+        Name of the mesh by default ""
+    r_short_endo : float, optional
+        Shortest radius on the endocardium layer, by default 7.0
+    r_short_epi : float, optional
+       Shortest radius on the epicardium layer, by default 10.0
+    r_long_endo : float, optional
+        Longest radius on the endocardium layer, by default 17.0
+    r_long_epi : float, optional
+        Longest radius on the epicardium layer, by default 20.0
+    quota_base : float, optional
+        Position of the base relative to the x=0 plane, by default -5.0
+    psize : float, optional
+        Point size, by default 3.0
+    ndiv : float, optional
+        Number of divisions, by default 1.0
+
+    Returns
+    -------
+    Path
+        Path to file
+    """
+    mu_base_endo = math.acos(quota_base / r_long_endo)
+    mu_base_epi = math.acos(quota_base / r_long_epi)
+    mu_apex_endo = mu_apex_epi = 0
+    psize_ref = psize / ndiv
+    return lv_ellipsoid(
+        mesh_name=mesh_name,
+        r_short_endo=r_short_endo,
+        r_short_epi=r_short_epi,
+        r_long_endo=r_long_endo,
+        r_long_epi=r_long_epi,
+        psize_ref=psize_ref,
+        mu_base_endo=mu_base_endo,
+        mu_base_epi=mu_base_epi,
+        mu_apex_endo=mu_apex_endo,
+        mu_apex_epi=mu_apex_epi,
+    )
+
+
+def lv_ellipsoid(
+    mesh_name: str = "",
     r_short_endo=0.025,
     r_short_epi=0.035,
     r_long_endo=0.09,
@@ -92,22 +155,45 @@ def create_benchmark_ellipsoid_mesh_gmsh(
     mu_base_endo=-math.acos(5 / 17),
     mu_apex_epi=-math.pi,
     mu_base_epi=-math.acos(5 / 20),
-    mesh_size_factor=1.0,
-):
-    gmsh.initialize()
+) -> Path:
+    """Create general LV ellipsoid
 
+    Parameters
+    ----------
+    mesh_name : str, optional
+        Name of the mesh, by default ""
+    r_short_endo : float, optional
+        Shortest radius on the endocardium layer, by default 0.025
+    r_short_epi : float, optional
+       Shortest radius on the epicardium layer, by default 0.035
+    r_long_endo : float, optional
+        Longest radius on the endocardium layer, by default 0.09
+    r_long_epi : float, optional
+        Longest radius on the epicardium layer, by default 0.097
+    psize_ref : float, optional
+        The reference point size (smaller values yield as finer mesh, by default 0.005
+    mu_apex_endo : float, optional
+        Angle for the endocardial apex, by default -math.pi
+    mu_base_endo : float, optional
+        Angle for the endocardial base, by default -math.acos(5 / 17)
+    mu_apex_epi : float, optional
+        Angle for the epicardial apex, by default -math.pi
+    mu_base_epi : float, optional
+        Angle for the epicardial apex, by default -math.acos(5 / 20)
+
+    Returns
+    -------
+    Path
+        Path to the generated gmsh file
+    """
+
+    path = handle_mesh_name(mesh_name=mesh_name)
+
+    gmsh.initialize()
     gmsh.option.setNumber("Geometry.CopyMeshingMethod", 1)
     gmsh.option.setNumber("Mesh.Optimize", 1)
     gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)
-    # gmsh.option.setNumber("Mesh.Algorithm3D", 7)
     gmsh.option.setNumber("Mesh.ElementOrder", 1)
-
-    # gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 3)
-    # gmsh.option.setNumber("Mesh.RecombineAll", 1)
-
-    # gmsh.option.setNumber("Mesh.Smoothing", 100)
-    # breakpoint()
-    gmsh.option.setNumber("Mesh.MeshSizeFactor", mesh_size_factor)
 
     def ellipsoid_point(mu, theta, r_long, r_short, psize):
         return gmsh.model.geo.addPoint(
@@ -217,6 +303,8 @@ def create_benchmark_ellipsoid_mesh_gmsh(
 
     gmsh.model.geo.synchronize()
     gmsh.model.mesh.generate(3)
-    gmsh.write(Path(mesh_name).as_posix())
+
+    gmsh.write(path.as_posix())
 
     gmsh.finalize()
+    return path

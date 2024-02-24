@@ -189,7 +189,7 @@ def compute_system(
     f[z_dofs] = f0[2, scalar_dofs] / np.linalg.norm(f0, axis=0)
     fiber.vector.setArray(f)
     fiber.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-    fiber.name = "fiber"
+    fiber.name = "f0"
 
     sheet = dolfinx.fem.Function(Vv)
     s = np.zeros_like(f)
@@ -198,7 +198,7 @@ def compute_system(
     s[z_dofs] = s0[2, scalar_dofs]
     sheet.vector.setArray(s)
     sheet.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-    sheet.name = "sheet"
+    sheet.name = "s0"
 
     sheet_normal = dolfinx.fem.Function(Vv)
     n = np.zeros_like(f)
@@ -207,7 +207,7 @@ def compute_system(
     n[z_dofs] = n0[2, scalar_dofs]
     sheet_normal.vector.setArray(n)
     sheet_normal.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-    sheet_normal.name = "sheet_normal"
+    sheet_normal.name = "n0"
 
     return Microstructure(f0=fiber, s0=sheet, n0=sheet_normal)
 
@@ -216,6 +216,6 @@ def create_microstructure(mesh, ffun, markers):
     # check_mesh_params(mesh_params)
     # check_fiber_params(fiber_params)
     # function_space = fiber_params.get("function_space", "P_1")
-    function_space = "DG_0"
+    function_space = "CG_1"
     t = laplace(mesh, ffun, markers, function_space=function_space)
     return compute_system(t)  # , **mesh_params, **fiber_params)
