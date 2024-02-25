@@ -24,6 +24,9 @@ dependencies = [
     "meshio",
     "h5py",
     "structlog",
+    "cardiac-geometries-core",
+    "rich-click",
+    "adios4dolfinx"
 ]
 
 [project.readme]
@@ -48,7 +51,7 @@ test = [
 ]
 
 [project.scripts]
-geo = "cardiac_geometries.cli:app"
+geox = "cardiac_geometries.cli:app"
 
 [tool.setuptools]
 include-package-data = true

@@ -1,9 +1,11 @@
+from pathlib import Path
 import dolfinx
 from dolfinx.fem.petsc import LinearProblem
 import numpy as np
 from petsc4py import PETSc
 import ufl
 import basix
+import adios4dolfinx
 
 from typing import Dict
 from typing import NamedTuple
@@ -57,10 +59,6 @@ def laplace(
 
     problem = LinearProblem(a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
     uh = problem.solve()
-
-    with dolfinx.io.XDMFFile(mesh.comm, "solution.xdmf", "w") as file:
-        file.write_mesh(mesh)
-        file.write_function(uh)
 
     if function_space != "P_1":
         family, degree = function_space.split("_")
@@ -212,10 +210,43 @@ def compute_system(
     return Microstructure(f0=fiber, s0=sheet, n0=sheet_normal)
 
 
-def create_microstructure(mesh, ffun, markers):
-    # check_mesh_params(mesh_params)
-    # check_fiber_params(fiber_params)
-    # function_space = fiber_params.get("function_space", "P_1")
-    function_space = "CG_1"
+def create_microstructure(
+    mesh,
+    ffun,
+    markers,
+    function_space="P_1",
+    r_short_endo=0.025,
+    r_short_epi=0.035,
+    r_long_endo=0.09,
+    r_long_epi=0.097,
+    alpha_endo: float = -60,
+    alpha_epi: float = 60,
+    outdir: str | Path | None = None,
+):
     t = laplace(mesh, ffun, markers, function_space=function_space)
-    return compute_system(t)  # , **mesh_params, **fiber_params)
+
+    if outdir is not None:
+        with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "laplace.xdmf", "w") as file:
+            file.write_mesh(mesh)
+            file.write_function(t)
+    system = compute_system(
+        t,
+        function_space=function_space,
+        r_short_endo=r_short_endo,
+        r_short_epi=r_short_epi,
+        r_long_endo=r_long_endo,
+        r_long_epi=r_long_epi,
+        alpha_endo=alpha_endo,
+        alpha_epi=alpha_epi,
+    )
+    if outdir is not None:
+        with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "microstructure.xdmf", "w") as file:
+            file.write_mesh(mesh)
+            file.write_function(system.f0)
+            file.write_function(system.s0)
+            file.write_function(system.n0)
+
+        adios4dolfinx.write_function(u=system.f0, filename=Path(outdir) / "f0.bp")
+        adios4dolfinx.write_function(u=system.s0, filename=Path(outdir) / "s0.bp")
+        adios4dolfinx.write_function(u=system.n0, filename=Path(outdir) / "n0.bp")
+    return system

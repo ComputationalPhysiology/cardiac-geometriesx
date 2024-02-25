@@ -1,4 +1,4 @@
-import cardiac_geometries.lv as lv
+import cardiac_geometries.utils as utils
 import cardiac_geometries.fibers as fibers
 import dolfinx
 from pathlib import Path
@@ -8,8 +8,8 @@ import adios4dolfinx
 
 def test_geo():
     msh_name = "lv.msh"
-    lv.lv_ellipsoid_flat_base(msh_name)
-    geo = lv.gmsh2dolfin(msh_name)
+    utils.lv_ellipsoid_flat_base(msh_name)
+    geo = utils.gmsh2dolfin(msh_name)
     micro = fibers.create_microstructure(geo.mesh, geo.ffun, geo.markers)
 
     with dolfinx.io.XDMFFile(geo.mesh.comm, "dolfinx_micro.xdmf", "w") as xdmf:
