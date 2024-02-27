@@ -1,0 +1,47 @@
+name: Test package
+
+on: [push]
+
+
+jobs:
+  test-code:
+    runs-on: ubuntu-22.04
+    container: ghcr.io/fenics/dolfinx/dolfinx:nightly
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install package
+        run: python3 -m pip install .[test]
+
+      - name: Run tests
+        run: python3 -m pytest -v
+
+      - name: Extract Coverage
+        run: |
+          python3 -m coverage report | sed 's/^/    /' >> $GITHUB_STEP_SUMMARY
+          python3 -m coverage json
+          export TOTAL=$(python3 -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "total=$TOTAL" >> $GITHUB_ENV
+
+      - name: Upload HTML report.
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-report
+          path: htmlcov
+
+      - name: Create coverage Badge
+        if: github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: a7290de789564f03eb6b1ee122fce423
+          filename: fenicsx-pulse-coverage.json
+          label: Coverage
+          message: ${{ env.total }}%
+          minColorRange: 50
+          maxColorRange: 90
+          valColorRange: ${{ env.total }}
