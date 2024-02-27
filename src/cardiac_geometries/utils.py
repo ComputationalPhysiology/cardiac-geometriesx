@@ -1,10 +1,12 @@
 from pathlib import Path
 import tempfile
 from typing import NamedTuple
+import shutil
 
 import numpy as np
 from mpi4py import MPI
 from structlog import get_logger
+import adios4dolfinx
 import dolfinx
 import meshio
 
@@ -16,6 +18,12 @@ def handle_mesh_name(mesh_name: str = "") -> Path:
     if mesh_name == "":
         fd, mesh_name = tempfile.mkstemp(suffix=".msh")
     return Path(mesh_name).with_suffix(".msh")
+
+
+def write_function(u, filename: str | Path, unlink: bool = True) -> None:
+    if Path(filename).exists() and unlink:
+        shutil.rmtree(filename)
+    adios4dolfinx.write_function(u=u, filename=filename)
 
 
 def json_serial(obj):
@@ -30,15 +38,19 @@ def json_serial(obj):
 
 class GMshGeometry(NamedTuple):
     mesh: dolfinx.mesh.Mesh
-    cfun: dolfinx.mesh.MeshTags
-    ffun: dolfinx.mesh.MeshTags
-    efun: dolfinx.mesh.MeshTags
-    vfun: dolfinx.mesh.MeshTags
+    cfun: dolfinx.mesh.MeshTags | None
+    ffun: dolfinx.mesh.MeshTags | None
+    efun: dolfinx.mesh.MeshTags | None
+    vfun: dolfinx.mesh.MeshTags | None
     markers: dict[str, tuple[int, int]]
 
 
 def create_mesh(mesh, cell_type):
     # From http://jsdokken.com/converted_files/tutorial_pygmsh.html
+    cells = mesh.get_cells_type(cell_type)
+    if cells.size == 0:
+        return None
+
     cells = mesh.get_cells_type(cell_type)
     cell_data = mesh.get_cell_data("gmsh:physical", cell_type)
     out_mesh = meshio.Mesh(
@@ -53,26 +65,33 @@ def gmsh2dolfin(msh_file, unlink: bool = False) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
     comm = MPI.COMM_WORLD
+
+    vertex_mesh_name = outdir / "vertex_mesh.xdmf"
+    line_mesh_name = outdir / "line_mesh.xdmf"
+    triangle_mesh_name = outdir / "triangle_mesh.xdmf"
+    tetra_mesh_name = outdir / "mesh.xdmf"
+
     if comm.rank == 0:
         msh = meshio.gmsh.read(msh_file)
         vertex_mesh = create_mesh(msh, "vertex")
         line_mesh = create_mesh(msh, "line")
         triangle_mesh = create_mesh(msh, "triangle")
         tetra_mesh = create_mesh(msh, "tetra")
-        vertex_mesh_name = outdir / "vertex_mesh.xdmf"
-        meshio.write(vertex_mesh_name, vertex_mesh)
 
-        line_mesh_name = outdir / "line_mesh.xdmf"
-        meshio.write(line_mesh_name, line_mesh)
+        if vertex_mesh is not None:
+            meshio.write(vertex_mesh_name, vertex_mesh)
 
-        triangle_mesh_name = outdir / "triangle_mesh.xdmf"
-        meshio.write(triangle_mesh_name, triangle_mesh)
+        if line_mesh is not None:
+            meshio.write(line_mesh_name, line_mesh)
 
-        tetra_mesh_name = outdir / "mesh.xdmf"
-        meshio.write(
-            tetra_mesh_name,
-            tetra_mesh,
-        )
+        if triangle_mesh is not None:
+            meshio.write(triangle_mesh_name, triangle_mesh)
+
+        if tetra_mesh is not None:
+            meshio.write(
+                tetra_mesh_name,
+                tetra_mesh,
+            )
         markers = msh.field_data
     else:
         markers = {}
@@ -84,18 +103,27 @@ def gmsh2dolfin(msh_file, unlink: bool = False) -> GMshGeometry:
         mesh = xdmf.read_mesh(name="Grid")
         cfun = xdmf.read_meshtags(mesh, name="Grid")
 
-    mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
-    with dolfinx.io.XDMFFile(comm, outdir / "triangle_mesh.xdmf", "r") as xdmf:
-        ffun = xdmf.read_meshtags(mesh, name="Grid")
-    ffun.name = "Facet tags"
+    if triangle_mesh_name.is_file():
+        mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
+        with dolfinx.io.XDMFFile(comm, triangle_mesh_name, "r") as xdmf:
+            ffun = xdmf.read_meshtags(mesh, name="Grid")
+        ffun.name = "Facet tags"
+    else:
+        ffun = None
 
-    mesh.topology.create_connectivity(mesh.topology.dim - 2, mesh.topology.dim)
-    with dolfinx.io.XDMFFile(comm, outdir / "line_mesh.xdmf", "r") as xdmf:
-        efun = xdmf.read_meshtags(mesh, name="Grid")
+    if line_mesh_name.is_file():
+        mesh.topology.create_connectivity(mesh.topology.dim - 2, mesh.topology.dim)
+        with dolfinx.io.XDMFFile(comm, line_mesh_name, "r") as xdmf:
+            efun = xdmf.read_meshtags(mesh, name="Grid")
+    else:
+        efun = None
 
-    mesh.topology.create_connectivity(mesh.topology.dim - 3, mesh.topology.dim)
-    with dolfinx.io.XDMFFile(comm, outdir / "vertex_mesh.xdmf", "r") as xdmf:
-        vfun = xdmf.read_meshtags(mesh, name="Grid")
+    if vertex_mesh_name.is_file():
+        mesh.topology.create_connectivity(mesh.topology.dim - 3, mesh.topology.dim)
+        with dolfinx.io.XDMFFile(comm, vertex_mesh_name, "r") as xdmf:
+            vfun = xdmf.read_meshtags(mesh, name="Grid")
+    else:
+        vfun = None
 
     if unlink:
         # Wait for all processes to finish reading

@@ -1,3 +1,3 @@
-from . import _lv_ellipsoid
+from . import _lv_ellipsoid, _slab
 
-__all__ = ["_lv_ellipsoid"]
+__all__ = ["_lv_ellipsoid", "_slab"]

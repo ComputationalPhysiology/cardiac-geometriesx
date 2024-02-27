@@ -1,86 +1,64 @@
 from pathlib import Path
+
 import dolfinx
 import numpy as np
 import basix
 
-
-from ._utils import Microstructure, laplace, normalize
+from ._utils import Microstructure
+from ._utils import laplace, normalize
 
 
 def compute_system(
     t_func: dolfinx.fem.Function,
-    r_short_endo=0.025,
-    r_short_epi=0.035,
-    r_long_endo=0.09,
-    r_long_epi=0.097,
     alpha_endo: float = -60,
     alpha_epi: float = 60,
     **kwargs,
-):
+) -> Microstructure:
+    """Compute ldrb system for slab, assuming linear
+    angle between endo and epi
+
+    Parameters
+    ----------
+    t_func : dolfin.Function
+        Solution to laplace equation with 0 on endo
+        and 1 on epi
+    alpha_endo : float, optional
+        Angle on endocardium, by default -60
+    alpha_epi : float, optional
+        Angle on epicardium, by default 60
+
+    Returns
+    -------
+    Microstructure
+        Tuple with fiber, sheet and sheet normal
+    """
+
     V = t_func.function_space
     element = V.ufl_element()
     mesh = V.mesh
 
-    dof_coordinates = V.tabulate_dof_coordinates()
-
     alpha = lambda x: (alpha_endo + (alpha_epi - alpha_endo) * x) * (np.pi / 180)
-    r_long = lambda x: r_long_endo + (r_long_epi - r_long_endo) * x
-    r_short = lambda x: r_short_endo + (r_short_epi - r_short_endo) * x
-
-    drl_dt = r_long_epi - r_long_endo
-    drs_dt = r_short_epi - r_short_endo
 
     t = t_func.x.array
 
-    rl = r_long(t)
-    rs = r_short(t)
-    al = alpha(t)
-
-    x = dof_coordinates[:, 0]
-    y = dof_coordinates[:, 1]
-    z = dof_coordinates[:, 2]
-
-    a = np.sqrt(y**2 + z**2) / rs
-    b = x / rl
-    mu = np.arctan2(a, b)
-    theta = np.pi - np.arctan2(z, -y)
-    theta[mu < 1e-7] = 0.0
-
-    e_t = np.array(
+    f0 = np.array(
         [
-            drl_dt * np.cos(mu),
-            drs_dt * np.sin(mu) * np.cos(theta),
-            drs_dt * np.sin(mu) * np.sin(theta),
+            np.cos(alpha(t)),
+            np.zeros_like(t),
+            np.sin(alpha(t)),
         ],
     )
-    e_t = normalize(e_t)
 
-    e_mu = np.array(
-        [
-            -rl * np.sin(mu),
-            rs * np.cos(mu) * np.cos(theta),
-            rs * np.cos(mu) * np.sin(theta),
-        ],
-    )
-    e_mu = normalize(e_mu)
-
-    e_theta = np.array(
+    s0 = np.array(
         [
             np.zeros_like(t),
-            -rs * np.sin(mu) * np.sin(theta),
-            rs * np.sin(mu) * np.cos(theta),
+            np.ones_like(t),
+            np.zeros_like(t),
         ],
     )
-    e_theta = normalize(e_theta)
 
-    f0 = np.sin(al) * e_mu + np.cos(al) * e_theta
-    f0 = normalize(f0)
-
-    n0 = np.cross(e_mu, e_theta, axis=0)
+    n0 = np.cross(f0, s0, axis=0)
     n0 = normalize(n0)
-
-    s0 = np.cross(f0, n0, axis=0)
-    s0 = normalize(s0)
 
     el = basix.ufl.element(
         element.family_name,
@@ -108,20 +86,47 @@ def compute_system(
 
 
 def create_microstructure(
-    mesh,
-    ffun,
-    markers,
-    function_space="P_1",
-    r_short_endo=0.025,
-    r_short_epi=0.035,
-    r_long_endo=0.09,
-    r_long_epi=0.097,
-    alpha_endo: float = -60,
-    alpha_epi: float = 60,
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    markers: dict[str, tuple[int, int]],
+    alpha_endo: float,
+    alpha_epi: float,
+    function_space: str = "P_1",
     outdir: str | Path | None = None,
-):
-    endo_marker = markers["ENDO"][0]
-    epi_marker = markers["EPI"][0]
+) -> Microstructure:
+    """Generate microstructure for slab using LDRB algorithm
+
+    Parameters
+    ----------
+    mesh : dolfinx.mesh.Mesh
+        A slab mesh
+    ffun : dolfinx.mesh.MeshTags
+        Facet function defining the boundaries
+    markers: Dict[str, Tuple[int, int]]
+        Markers with keys Y0 and Y1 representing the endo and
+        epi planes respectively. The values should be a tuple
+        whose first value is the value of the marker (corresponding
+        to ffun) and the second value is the dimension
+    alpha_endo : float
+        Angle on the endocardium
+    alpha_epi : float
+        Angle on the epicardium
+    function_space : str
+        Function space to interpolate the fibers, by default P_1
+    outdir : Optional[Union[str, Path]], optional
+        Output directory to store the results, by default None.
+        If no output directory is specified the results will not be stored,
+        but only returned.
+
+    Returns
+    -------
+    Microstructure
+        Tuple with fiber, sheet and sheet normal
+    """
+
+    endo_marker = markers["Y0"][0]
+    epi_marker = markers["Y1"][0]
+
     t = laplace(
         mesh,
         ffun,
@@ -129,31 +134,27 @@ def create_microstructure(
         epi_marker=epi_marker,
         function_space=function_space,
     )
-
     if outdir is not None:
         with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "laplace.xdmf", "w") as file:
             file.write_mesh(mesh)
             file.write_function(t)
+
     system = compute_system(
         t,
-        function_space=function_space,
-        r_short_endo=r_short_endo,
-        r_short_epi=r_short_epi,
-        r_long_endo=r_long_endo,
-        r_long_epi=r_long_epi,
         alpha_endo=alpha_endo,
         alpha_epi=alpha_epi,
     )
+
     if outdir is not None:
         with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "microstructure.xdmf", "w") as file:
             file.write_mesh(mesh)
             file.write_function(system.f0)
             file.write_function(system.s0)
             file.write_function(system.n0)
-
         from ..utils import write_function
 
         write_function(u=system.f0, filename=Path(outdir) / "f0.bp")
         write_function(u=system.s0, filename=Path(outdir) / "s0.bp")
         write_function(u=system.n0, filename=Path(outdir) / "n0.bp")
+
     return system
