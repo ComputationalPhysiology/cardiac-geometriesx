@@ -10,7 +10,6 @@ from click.testing import CliRunner
     "script",
     [
         cli.slab,
-        cli.slab_in_bath,
         cli.lv_ellipsoid,
     ],
 )
@@ -18,7 +17,7 @@ def test_script(script, tmp_path: Path):
     runner = CliRunner()
     path = tmp_path
 
-    res = runner.invoke(script, [path.as_posix()])  # , "--create-fibers"])
+    res = runner.invoke(script, [path.as_posix(), "--create-fibers"])
     assert res.exit_code == 0
     assert path.is_dir()
     geo = Geometry.from_folder(path)
@@ -29,11 +28,12 @@ def test_script(script, tmp_path: Path):
 @pytest.mark.parametrize(
     "script",
     [
+        cli.slab_in_bath,
         cli.biv_ellipsoid,
         cli.biv_ellipsoid_torso,
     ],
 )
-def test_script_biv(script, tmp_path: Path):
+def test_script_no_fibers(script, tmp_path: Path):
     runner = CliRunner()
     path = tmp_path
     res = runner.invoke(script, [path.as_posix()])

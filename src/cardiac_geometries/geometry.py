@@ -88,9 +88,9 @@ class Geometry:
 
         family, degree = function_space.split("_")
         V = dolfinx.fem.functionspace(mesh, (family, int(degree), (mesh.geometry.dim,)))
-        f0 = dolfinx.fem.Function(V)
-        s0 = dolfinx.fem.Function(V)
-        n0 = dolfinx.fem.Function(V)
+        f0 = dolfinx.fem.Function(V, name="f0")
+        s0 = dolfinx.fem.Function(V, name="s0")
+        n0 = dolfinx.fem.Function(V, name="n0")
 
         # Read fiber
         if (folder / "f0.bp").exists():

@@ -684,7 +684,7 @@ def biv_ellipsoid_torso(
     geo.save(outdir)
 
 
-@click.command()
+@click.command(help="Create slab geometry")
 @click.argument(
     "outdir",
     required=True,
@@ -781,7 +781,7 @@ def slab(
     geo.save(outdir)
 
 
-@click.command()
+@click.command(help="Create slab in bath geometry")
 @click.argument(
     "outdir",
     required=True,
