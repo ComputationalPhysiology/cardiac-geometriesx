@@ -4,7 +4,7 @@ import numpy as np
 import basix
 
 
-from ._utils import Microstructure, laplace, normalize
+from . import utils
 
 
 def compute_system(
@@ -16,7 +16,7 @@ def compute_system(
     alpha_endo: float = -60,
     alpha_epi: float = 60,
     **kwargs,
-):
+) -> utils.Microstructure:
     V = t_func.function_space
     element = V.ufl_element()
     mesh = V.mesh
@@ -53,7 +53,7 @@ def compute_system(
             drs_dt * np.sin(mu) * np.sin(theta),
         ],
     )
-    e_t = normalize(e_t)
+    e_t = utils.normalize(e_t)
 
     e_mu = np.array(
         [
@@ -62,7 +62,7 @@ def compute_system(
             rs * np.cos(mu) * np.sin(theta),
         ],
     )
-    e_mu = normalize(e_mu)
+    e_mu = utils.normalize(e_mu)
 
     e_theta = np.array(
         [
@@ -71,16 +71,16 @@ def compute_system(
             rs * np.sin(mu) * np.cos(theta),
         ],
     )
-    e_theta = normalize(e_theta)
+    e_theta = utils.normalize(e_theta)
 
     f0 = np.sin(al) * e_mu + np.cos(al) * e_theta
-    f0 = normalize(f0)
+    f0 = utils.normalize(f0)
 
     n0 = np.cross(e_mu, e_theta, axis=0)
-    n0 = normalize(n0)
+    n0 = utils.normalize(n0)
 
     s0 = np.cross(f0, n0, axis=0)
-    s0 = normalize(s0)
+    s0 = utils.normalize(s0)
 
     el = basix.ufl.element(
         element.family_name,
@@ -104,7 +104,7 @@ def compute_system(
     sheet_normal.x.array[:] = n0.T.reshape(-1)
     sheet_normal.name = "n0"
 
-    return Microstructure(f0=fiber, s0=sheet, n0=sheet_normal)
+    return utils.Microstructure(f0=fiber, s0=sheet, n0=sheet_normal)
 
 
 def create_microstructure(
@@ -122,7 +122,7 @@ def create_microstructure(
 ):
     endo_marker = markers["ENDO"][0]
     epi_marker = markers["EPI"][0]
-    t = laplace(
+    t = utils.laplace(
         mesh,
         ffun,
         endo_marker=endo_marker,
@@ -145,15 +145,6 @@ def create_microstructure(
         alpha_epi=alpha_epi,
     )
     if outdir is not None:
-        with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "microstructure.xdmf", "w") as file:
-            file.write_mesh(mesh)
-            file.write_function(system.f0)
-            file.write_function(system.s0)
-            file.write_function(system.n0)
+        utils.save_microstructure(mesh, system, outdir)
 
-        from ..utils import write_function
-
-        write_function(u=system.f0, filename=Path(outdir) / "f0.bp")
-        write_function(u=system.s0, filename=Path(outdir) / "s0.bp")
-        write_function(u=system.n0, filename=Path(outdir) / "n0.bp")
     return system

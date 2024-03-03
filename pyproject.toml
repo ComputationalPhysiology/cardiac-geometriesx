@@ -26,7 +26,7 @@ dependencies = [
     "structlog",
     "cardiac-geometries-core",
     "rich-click",
-    "adios4dolfinx"
+    "adios4fordolfinx@git+https://github.com/jorgensd/adios4dolfinx#egg=main"
 ]
 
 [project.readme]
