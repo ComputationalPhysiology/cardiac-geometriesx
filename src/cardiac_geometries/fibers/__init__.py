@@ -1,3 +1,6 @@
-from . import _lv_ellipsoid, _slab
+from . import lv_ellipsoid, slab
+from . import utils
 
-__all__ = ["_lv_ellipsoid", "_slab"]
+from .utils import Microstructure
+
+__all__ = ["lv_ellipsoid", "slab", "utils", "Microstructure"]

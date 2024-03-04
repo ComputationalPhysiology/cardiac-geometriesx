@@ -1,12 +1,12 @@
 from pathlib import Path
 import tempfile
-from typing import NamedTuple
-import shutil
+from typing import NamedTuple, Iterable
+from enum import Enum
 
 import numpy as np
 from mpi4py import MPI
 from structlog import get_logger
-import adios4dolfinx
+import basix
 import dolfinx
 import meshio
 
@@ -14,16 +14,39 @@ import meshio
 logger = get_logger()
 
 
+def element2array(el: basix.finite_element.FiniteElement) -> np.ndarray:
+    return np.array(
+        [int(el.family), int(el.cell_type), int(el.degree), int(el.discontinuous)],
+        dtype=np.uint8,
+    )
+
+
+def number2Enum(num: int, enum: Iterable) -> Enum:
+    for e in enum:
+        if int(e) == num:
+            return e
+    raise ValueError(f"Invalid value {num} for enum {enum}")
+
+
+def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
+    family = number2Enum(arr[0], basix.ElementFamily)
+    cell_type = number2Enum(arr[1], basix.CellType)
+    degree = int(arr[2])
+    discontinuous = bool(arr[3])
+    # TODO: Shape is hardcoded to (3,) for now, but this should also be stored
+    return basix.ufl.element(
+        family=family,
+        cell=cell_type,
+        degree=degree,
+        discontinuous=discontinuous,
+        shape=(3,),
+    )
+
+
 def handle_mesh_name(mesh_name: str = "") -> Path:
     if mesh_name == "":
         fd, mesh_name = tempfile.mkstemp(suffix=".msh")
     return Path(mesh_name).with_suffix(".msh")
-
-
-def write_function(u, filename: str | Path, unlink: bool = True) -> None:
-    if Path(filename).exists() and unlink:
-        shutil.rmtree(filename)
-    adios4dolfinx.write_function(u=u, filename=filename)
 
 
 def json_serial(obj):
@@ -61,10 +84,24 @@ def create_mesh(mesh, cell_type):
     return out_mesh
 
 
-def gmsh2dolfin(msh_file, unlink: bool = False) -> GMshGeometry:
+def read_ffun(mesh, filename: str | Path) -> dolfinx.mesh.MeshTags | None:
+    mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
+    with dolfinx.io.XDMFFile(mesh.comm, filename, "r") as xdmf:
+        ffun = xdmf.read_meshtags(mesh, name="Grid")
+    ffun.name = "Facet tags"
+    return ffun
+
+
+def read_mesh(comm, filename: str | Path) -> tuple[dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags | None]:
+    with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
+        mesh = xdmf.read_mesh(name="Grid")
+        cfun = xdmf.read_meshtags(mesh, name="Grid")
+    return mesh, cfun
+
+
+def gmsh2dolfin(comm: MPI.Intracomm, msh_file, unlink: bool = False) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
-    comm = MPI.COMM_WORLD
 
     vertex_mesh_name = outdir / "vertex_mesh.xdmf"
     line_mesh_name = outdir / "line_mesh.xdmf"
@@ -99,15 +136,10 @@ def gmsh2dolfin(msh_file, unlink: bool = False) -> GMshGeometry:
     markers = comm.bcast(markers, root=0)
     comm.barrier()
 
-    with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "r") as xdmf:
-        mesh = xdmf.read_mesh(name="Grid")
-        cfun = xdmf.read_meshtags(mesh, name="Grid")
+    mesh, cfun = read_mesh(comm, tetra_mesh_name)
 
     if triangle_mesh_name.is_file():
-        mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
-        with dolfinx.io.XDMFFile(comm, triangle_mesh_name, "r") as xdmf:
-            ffun = xdmf.read_meshtags(mesh, name="Grid")
-        ffun.name = "Facet tags"
+        ffun = read_ffun(mesh, triangle_mesh_name)
     else:
         ffun = None
 

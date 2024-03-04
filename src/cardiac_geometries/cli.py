@@ -172,7 +172,7 @@ def lv_ellipsoid(
         fiber_space=fiber_space,
         aha=aha,
     )
-    geo.save(outdir)
+    geo.save(outdir / "lv_ellipsoid.bp")
 
 
 @click.command(help="Create BiV ellipsoidal geometry")
@@ -402,7 +402,7 @@ def biv_ellipsoid(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
     )
-    geo.save(outdir)
+    geo.save(outdir / "biv_ellipsoid.bp")
 
 
 @click.command(help="Create BiV ellipsoidal geometry embedded in a torso")
@@ -681,7 +681,7 @@ def biv_ellipsoid_torso(
         fiber_space=fiber_space,
     )
 
-    geo.save(outdir)
+    geo.save(outdir / "biv_ellipsoid_torso.bp")
 
 
 @click.command(help="Create slab geometry")
@@ -778,7 +778,7 @@ def slab(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
     )
-    geo.save(outdir)
+    geo.save(outdir / "slab.bp")
 
 
 @click.command(help="Create slab in bath geometry")
@@ -865,7 +865,7 @@ def slab_in_bath(
         bz=bz,
         dx=dx,
     )
-    geo.save(outdir)
+    geo.save(outdir / "slab_in_bath.bp")
 
 
 app.add_command(lv_ellipsoid)

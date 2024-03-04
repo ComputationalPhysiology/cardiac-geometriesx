@@ -4,8 +4,7 @@ import dolfinx
 import numpy as np
 import basix
 
-from ._utils import Microstructure
-from ._utils import laplace, normalize
+from . import utils
 
 
 def compute_system(
@@ -13,7 +12,7 @@ def compute_system(
     alpha_endo: float = -60,
     alpha_epi: float = 60,
     **kwargs,
-) -> Microstructure:
+) -> utils.Microstructure:
     """Compute ldrb system for slab, assuming linear
     angle between endo and epi
 
@@ -58,7 +57,7 @@ def compute_system(
     )
 
     n0 = np.cross(f0, s0, axis=0)
-    n0 = normalize(n0)
+    n0 = utils.normalize(n0)
 
     el = basix.ufl.element(
         element.family_name,
@@ -82,7 +81,7 @@ def compute_system(
     sheet_normal.x.array[:] = n0.T.reshape(-1)
     sheet_normal.name = "n0"
 
-    return Microstructure(f0=fiber, s0=sheet, n0=sheet_normal)
+    return utils.Microstructure(f0=fiber, s0=sheet, n0=sheet_normal)
 
 
 def create_microstructure(
@@ -93,7 +92,7 @@ def create_microstructure(
     alpha_epi: float,
     function_space: str = "P_1",
     outdir: str | Path | None = None,
-) -> Microstructure:
+) -> utils.Microstructure:
     """Generate microstructure for slab using LDRB algorithm
 
     Parameters
@@ -127,7 +126,7 @@ def create_microstructure(
     endo_marker = markers["Y0"][0]
     epi_marker = markers["Y1"][0]
 
-    t = laplace(
+    t = utils.laplace(
         mesh,
         ffun,
         endo_marker=endo_marker,
@@ -146,15 +145,6 @@ def create_microstructure(
     )
 
     if outdir is not None:
-        with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "microstructure.xdmf", "w") as file:
-            file.write_mesh(mesh)
-            file.write_function(system.f0)
-            file.write_function(system.s0)
-            file.write_function(system.n0)
-        from ..utils import write_function
-
-        write_function(u=system.f0, filename=Path(outdir) / "f0.bp")
-        write_function(u=system.s0, filename=Path(outdir) / "s0.bp")
-        write_function(u=system.n0, filename=Path(outdir) / "n0.bp")
+        utils.save_microstructure(mesh, system, outdir)
 
     return system

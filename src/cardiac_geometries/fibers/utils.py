@@ -1,15 +1,43 @@
 from typing import NamedTuple
+from pathlib import Path
 
 import dolfinx
 from dolfinx.fem.petsc import LinearProblem
 import ufl
 import numpy as np
+import adios4dolfinx
 
 
 class Microstructure(NamedTuple):
     f0: dolfinx.fem.Function
     s0: dolfinx.fem.Function
     n0: dolfinx.fem.Function
+
+
+def save_microstructure(
+    mesh: dolfinx.mesh.Mesh, system: Microstructure, outdir: str | Path
+) -> None:
+    from ..utils import element2array
+
+    # Save for paraview visualization
+    with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "microstructure.xdmf", "w") as file:
+        file.write_mesh(mesh)
+        file.write_function(system.f0)
+        file.write_function(system.s0)
+        file.write_function(system.n0)
+
+    # Save with proper function space
+    filename = Path(outdir) / "microstructure.bp"
+    adios4dolfinx.write_function(u=system.f0, filename=filename)
+    adios4dolfinx.write_function(u=system.s0, filename=filename)
+    adios4dolfinx.write_function(u=system.n0, filename=filename)
+    arr = element2array(system.f0.ufl_element().basix_element)
+    adios4dolfinx.write_attributes(
+        comm=mesh.comm,
+        filename=filename,
+        name="function_space",
+        attributes={k: arr for k in ("f0", "s0", "n0")},
+    )
 
 
 def normalize(u):

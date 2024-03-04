@@ -1,10 +1,11 @@
 from pathlib import Path
 import math
 import json
-import tempfile
 import datetime
 from importlib.metadata import metadata
 from structlog import get_logger
+
+from mpi4py import MPI
 import cardiac_geometries_core as cgc
 
 from . import utils
@@ -17,7 +18,7 @@ logger = get_logger()
 
 
 def biv_ellipsoid(
-    outdir: str | Path | None = None,
+    outdir: str | Path,
     char_length: float = 0.5,
     center_lv_x: float = 0.0,
     center_lv_y: float = 0.0,
@@ -46,9 +47,8 @@ def biv_ellipsoid(
 
     Parameters
     ----------
-    outdir : Union[str, Path, None], optional
-        Directory where to save the results. If not provided a temporary
-        directory will be created, by default None, by default None
+    outdir : str | Path
+        Directory where to save the results.
     char_length : float, optional
         Characteristic length of mesh, by default 0.5
     center_lv_y : float, optional
@@ -98,91 +98,80 @@ def biv_ellipsoid(
 
     Returns
     -------
-    Optional[Geometry]
+    Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
-        Returns None if dolfin is not installed.
 
-    Raises
-    ------
-    ImportError
-        If gmsh is not installed
     """
-
-    _tmpfile = None
-    if outdir is None:
-        _tmpfile = tempfile.TemporaryDirectory()
-        outdir = _tmpfile.__enter__()
-
-    from cardiac_geometries_core import biv_ellipsoid
-
+    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
-    outdir.mkdir(exist_ok=True, parents=True)
-
-    with open(outdir / "info.json", "w") as f:
-        json.dump(
-            {
-                "char_length": char_length,
-                "center_lv_x": center_lv_x,
-                "center_lv_y": center_lv_y,
-                "center_lv_z": center_lv_z,
-                "a_endo_lv": a_endo_lv,
-                "b_endo_lv": b_endo_lv,
-                "c_endo_lv": c_endo_lv,
-                "a_epi_lv": a_epi_lv,
-                "b_epi_lv": b_epi_lv,
-                "c_epi_lv": c_epi_lv,
-                "center_rv_x": center_rv_x,
-                "center_rv_y": center_rv_y,
-                "center_rv_z": center_rv_z,
-                "a_endo_rv": a_endo_rv,
-                "b_endo_rv": b_endo_rv,
-                "c_endo_rv": c_endo_rv,
-                "a_epi_rv": a_epi_rv,
-                "b_epi_rv": b_epi_rv,
-                "c_epi_rv": c_epi_rv,
-                "create_fibers": create_fibers,
-                "fibers_angle_endo": fiber_angle_endo,
-                "fibers_angle_epi": fiber_angle_epi,
-                "fiber_space": fiber_space,
-                # "mesh_type": MeshTypes.biv_ellipsoid.value,
-                "cardiac_geometry_version": __version__,
-                "timestamp": datetime.datetime.now().isoformat(),
-            },
-            f,
-            indent=2,
-            default=utils.json_serial,
-        )
-
     mesh_name = outdir / "biv_ellipsoid.msh"
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
 
-    biv_ellipsoid(
-        mesh_name=mesh_name.as_posix(),
-        char_length=char_length,
-        center_lv_x=center_lv_x,
-        center_lv_y=center_lv_y,
-        center_lv_z=center_lv_z,
-        a_endo_lv=a_endo_lv,
-        b_endo_lv=b_endo_lv,
-        c_endo_lv=c_endo_lv,
-        a_epi_lv=a_epi_lv,
-        b_epi_lv=b_epi_lv,
-        c_epi_lv=c_epi_lv,
-        center_rv_x=center_rv_x,
-        center_rv_y=center_rv_y,
-        center_rv_z=center_rv_z,
-        a_endo_rv=a_endo_rv,
-        b_endo_rv=b_endo_rv,
-        c_endo_rv=c_endo_rv,
-        a_epi_rv=a_epi_rv,
-        b_epi_rv=b_epi_rv,
-        c_epi_rv=c_epi_rv,
-    )
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                {
+                    "char_length": char_length,
+                    "center_lv_x": center_lv_x,
+                    "center_lv_y": center_lv_y,
+                    "center_lv_z": center_lv_z,
+                    "a_endo_lv": a_endo_lv,
+                    "b_endo_lv": b_endo_lv,
+                    "c_endo_lv": c_endo_lv,
+                    "a_epi_lv": a_epi_lv,
+                    "b_epi_lv": b_epi_lv,
+                    "c_epi_lv": c_epi_lv,
+                    "center_rv_x": center_rv_x,
+                    "center_rv_y": center_rv_y,
+                    "center_rv_z": center_rv_z,
+                    "a_endo_rv": a_endo_rv,
+                    "b_endo_rv": b_endo_rv,
+                    "c_endo_rv": c_endo_rv,
+                    "a_epi_rv": a_epi_rv,
+                    "b_epi_rv": b_epi_rv,
+                    "c_epi_rv": c_epi_rv,
+                    "create_fibers": create_fibers,
+                    "fibers_angle_endo": fiber_angle_endo,
+                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_space": fiber_space,
+                    # "mesh_type": MeshTypes.biv_ellipsoid.value,
+                    "cardiac_geometry_version": __version__,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                },
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
 
-    geometry = utils.gmsh2dolfin(mesh_name, unlink=False)
+        cgc.biv_ellipsoid(
+            mesh_name=mesh_name.as_posix(),
+            char_length=char_length,
+            center_lv_x=center_lv_x,
+            center_lv_y=center_lv_y,
+            center_lv_z=center_lv_z,
+            a_endo_lv=a_endo_lv,
+            b_endo_lv=b_endo_lv,
+            c_endo_lv=c_endo_lv,
+            a_epi_lv=a_epi_lv,
+            b_epi_lv=b_epi_lv,
+            c_epi_lv=c_epi_lv,
+            center_rv_x=center_rv_x,
+            center_rv_y=center_rv_y,
+            center_rv_z=center_rv_z,
+            a_endo_rv=a_endo_rv,
+            b_endo_rv=b_endo_rv,
+            c_endo_rv=c_endo_rv,
+            a_epi_rv=a_epi_rv,
+            b_epi_rv=b_epi_rv,
+            c_epi_rv=c_epi_rv,
+        )
+    comm.barrier()
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
 
-    with open(outdir / "markers.json", "w") as f:
-        json.dump(geometry.markers, f, default=utils.json_serial)
-
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
+    comm.barrier()
     if create_fibers:
         raise NotImplementedError("Fibers not implemented yet for biv ellipsoid.")
         # from .fibers._biv_ellipsoid import create_biv_fibers
@@ -197,16 +186,12 @@ def biv_ellipsoid(
         #     outdir=outdir,
         # )
 
-    geo = Geometry.from_folder(outdir)
-
-    if _tmpfile is not None:
-        _tmpfile.__exit__(None, None, None)
-
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
 
 
 def biv_ellipsoid_torso(
-    outdir: str | Path | None = None,
+    outdir: str | Path,
     char_length: float = 0.5,
     heart_as_surface: bool = False,
     torso_length: float = 20.0,
@@ -240,9 +225,8 @@ def biv_ellipsoid_torso(
 
     Parameters
     ----------
-    outdir : Union[str, Path, None], optional
-        Directory where to save the results. If not provided a temporary
-        directory will be created, by default None, by default None
+    outdir : str | Path
+        Directory where to save the results.
     char_length : float, optional
         Characteristic length of mesh, by default 0.5
     heart_as_surface: bool
@@ -304,100 +288,91 @@ def biv_ellipsoid_torso(
 
     Returns
     -------
-    Optional[Geometry]
+    Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
-        Returns None if dolfin is not installed.
 
-    Raises
-    ------
-    ImportError
-        If gmsh is not installed
     """
-
-    _tmpfile = None
-    if outdir is None:
-        _tmpfile = tempfile.TemporaryDirectory()
-        outdir = _tmpfile.__enter__()
-
-    from cardiac_geometries_core import biv_ellipsoid_torso
-
+    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
-    outdir.mkdir(exist_ok=True, parents=True)
-
-    with open(outdir / "info.json", "w") as f:
-        json.dump(
-            {
-                "char_length": char_length,
-                "heart_as_surface": heart_as_surface,
-                "torso_length": torso_length,
-                "torso_width": torso_width,
-                "torso_height": torso_height,
-                "rotation_angle": rotation_angle,
-                "center_lv_x": center_lv_x,
-                "center_lv_y": center_lv_y,
-                "center_lv_z": center_lv_z,
-                "a_endo_lv": a_endo_lv,
-                "b_endo_lv": b_endo_lv,
-                "c_endo_lv": c_endo_lv,
-                "a_epi_lv": a_epi_lv,
-                "b_epi_lv": b_epi_lv,
-                "c_epi_lv": c_epi_lv,
-                "center_rv_x": center_rv_x,
-                "center_rv_y": center_rv_y,
-                "center_rv_z": center_rv_z,
-                "a_endo_rv": a_endo_rv,
-                "b_endo_rv": b_endo_rv,
-                "c_endo_rv": c_endo_rv,
-                "a_epi_rv": a_epi_rv,
-                "b_epi_rv": b_epi_rv,
-                "c_epi_rv": c_epi_rv,
-                "create_fibers": create_fibers,
-                "fibers_angle_endo": fiber_angle_endo,
-                "fibers_angle_epi": fiber_angle_epi,
-                "fiber_space": fiber_space,
-                # "mesh_type": MeshTypes.biv_ellipsoid.value,
-                "cardiac_geometry_version": __version__,
-                "timestamp": datetime.datetime.now().isoformat(),
-            },
-            f,
-            indent=2,
-            default=utils.json_serial,
-        )
-
     mesh_name = outdir / "biv_ellipsoid_torso.msh"
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
 
-    biv_ellipsoid_torso(
-        mesh_name=mesh_name.as_posix(),
-        char_length=char_length,
-        heart_as_surface=heart_as_surface,
-        torso_length=torso_length,
-        torso_height=torso_height,
-        torso_width=torso_width,
-        rotation_angle=rotation_angle,
-        center_lv_x=center_lv_x,
-        center_lv_y=center_lv_y,
-        center_lv_z=center_lv_z,
-        a_endo_lv=a_endo_lv,
-        b_endo_lv=b_endo_lv,
-        c_endo_lv=c_endo_lv,
-        a_epi_lv=a_epi_lv,
-        b_epi_lv=b_epi_lv,
-        c_epi_lv=c_epi_lv,
-        center_rv_x=center_rv_x,
-        center_rv_y=center_rv_y,
-        center_rv_z=center_rv_z,
-        a_endo_rv=a_endo_rv,
-        b_endo_rv=b_endo_rv,
-        c_endo_rv=c_endo_rv,
-        a_epi_rv=a_epi_rv,
-        b_epi_rv=b_epi_rv,
-        c_epi_rv=c_epi_rv,
-    )
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                {
+                    "char_length": char_length,
+                    "heart_as_surface": heart_as_surface,
+                    "torso_length": torso_length,
+                    "torso_width": torso_width,
+                    "torso_height": torso_height,
+                    "rotation_angle": rotation_angle,
+                    "center_lv_x": center_lv_x,
+                    "center_lv_y": center_lv_y,
+                    "center_lv_z": center_lv_z,
+                    "a_endo_lv": a_endo_lv,
+                    "b_endo_lv": b_endo_lv,
+                    "c_endo_lv": c_endo_lv,
+                    "a_epi_lv": a_epi_lv,
+                    "b_epi_lv": b_epi_lv,
+                    "c_epi_lv": c_epi_lv,
+                    "center_rv_x": center_rv_x,
+                    "center_rv_y": center_rv_y,
+                    "center_rv_z": center_rv_z,
+                    "a_endo_rv": a_endo_rv,
+                    "b_endo_rv": b_endo_rv,
+                    "c_endo_rv": c_endo_rv,
+                    "a_epi_rv": a_epi_rv,
+                    "b_epi_rv": b_epi_rv,
+                    "c_epi_rv": c_epi_rv,
+                    "create_fibers": create_fibers,
+                    "fibers_angle_endo": fiber_angle_endo,
+                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_space": fiber_space,
+                    # "mesh_type": MeshTypes.biv_ellipsoid.value,
+                    "cardiac_geometry_version": __version__,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                },
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
 
-    geometry = utils.gmsh2dolfin(mesh_name, unlink=False)
+        cgc.biv_ellipsoid_torso(
+            mesh_name=mesh_name.as_posix(),
+            char_length=char_length,
+            heart_as_surface=heart_as_surface,
+            torso_length=torso_length,
+            torso_height=torso_height,
+            torso_width=torso_width,
+            rotation_angle=rotation_angle,
+            center_lv_x=center_lv_x,
+            center_lv_y=center_lv_y,
+            center_lv_z=center_lv_z,
+            a_endo_lv=a_endo_lv,
+            b_endo_lv=b_endo_lv,
+            c_endo_lv=c_endo_lv,
+            a_epi_lv=a_epi_lv,
+            b_epi_lv=b_epi_lv,
+            c_epi_lv=c_epi_lv,
+            center_rv_x=center_rv_x,
+            center_rv_y=center_rv_y,
+            center_rv_z=center_rv_z,
+            a_endo_rv=a_endo_rv,
+            b_endo_rv=b_endo_rv,
+            c_endo_rv=c_endo_rv,
+            a_epi_rv=a_epi_rv,
+            b_epi_rv=b_epi_rv,
+            c_epi_rv=c_epi_rv,
+        )
+    comm.barrier()
 
-    with open(outdir / "markers.json", "w") as f:
-        json.dump(geometry.markers, f, default=utils.json_serial)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
+    comm.barrier()
 
     if create_fibers:
         if heart_as_surface:
@@ -417,16 +392,12 @@ def biv_ellipsoid_torso(
             #     outdir=outdir,
             # )
 
-    geo = Geometry.from_folder(outdir)
-
-    if _tmpfile is not None:
-        _tmpfile.__exit__(None, None, None)
-
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
 
 
 def lv_ellipsoid(
-    outdir: Path | str | None = None,
+    outdir: Path | str,
     r_short_endo: float = 7.0,
     r_short_epi: float = 10.0,
     r_long_endo: float = 17.0,
@@ -447,8 +418,7 @@ def lv_ellipsoid(
     Parameters
     ----------
     outdir : Optional[Path], optional
-        Directory where to save the results. If not provided a temporary
-        directory will be created, by default None
+        Directory where to save the results.
     r_short_endo : float, optional
         Shortest radius on the endocardium layer, by default 7.0
     r_short_epi : float, optional
@@ -480,65 +450,57 @@ def lv_ellipsoid(
 
     Returns
     -------
-    Optional[Geometry]
+    Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
-        Returns None if dolfin is not installed.
 
-    Raises
-    ------
-    ImportError
-        If gmsh is not installed
     """
-
-    _tmpfile = None
-    if outdir is None:
-        _tmpfile = tempfile.TemporaryDirectory()
-        outdir = _tmpfile.__enter__()
-
+    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
-    outdir.mkdir(exist_ok=True, parents=True)
-
-    with open(outdir / "info.json", "w") as f:
-        json.dump(
-            {
-                "r_short_endo": r_short_endo,
-                "r_short_epi": r_short_epi,
-                "r_long_endo": r_long_endo,
-                "r_long_epi": r_long_epi,
-                "psize_ref": psize_ref,
-                "mu_apex_endo": mu_apex_endo,
-                "mu_base_endo": mu_base_endo,
-                "mu_apex_epi": mu_apex_epi,
-                "mu_base_epi": mu_base_epi,
-                "create_fibers": create_fibers,
-                "fibers_angle_endo": fiber_angle_endo,
-                "fibers_angle_epi": fiber_angle_epi,
-                "fiber_space": fiber_space,
-                "aha": aha,
-                # "mesh_type": MeshTypes.lv_ellipsoid.value,
-                "cardiac_geometry_version": __version__,
-                "timestamp": datetime.datetime.now().isoformat(),
-            },
-            f,
-            indent=2,
-            default=utils.json_serial,
-        )
-
     mesh_name = outdir / "lv_ellipsoid.msh"
-    cgc.lv_ellipsoid(
-        mesh_name=mesh_name.as_posix(),
-        r_short_endo=r_short_endo,
-        r_short_epi=r_short_epi,
-        r_long_endo=r_long_endo,
-        r_long_epi=r_long_epi,
-        mu_base_endo=mu_base_endo,
-        mu_base_epi=mu_base_epi,
-        mu_apex_endo=mu_apex_endo,
-        mu_apex_epi=mu_apex_epi,
-        psize_ref=psize_ref,
-    )
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
 
-    geometry = utils.gmsh2dolfin(mesh_name, unlink=False)
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                {
+                    "r_short_endo": r_short_endo,
+                    "r_short_epi": r_short_epi,
+                    "r_long_endo": r_long_endo,
+                    "r_long_epi": r_long_epi,
+                    "psize_ref": psize_ref,
+                    "mu_apex_endo": mu_apex_endo,
+                    "mu_base_endo": mu_base_endo,
+                    "mu_apex_epi": mu_apex_epi,
+                    "mu_base_epi": mu_base_epi,
+                    "create_fibers": create_fibers,
+                    "fibers_angle_endo": fiber_angle_endo,
+                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_space": fiber_space,
+                    "aha": aha,
+                    # "mesh_type": MeshTypes.lv_ellipsoid.value,
+                    "cardiac_geometry_version": __version__,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                },
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
+
+        cgc.lv_ellipsoid(
+            mesh_name=mesh_name.as_posix(),
+            r_short_endo=r_short_endo,
+            r_short_epi=r_short_epi,
+            r_long_endo=r_long_endo,
+            r_long_epi=r_long_epi,
+            mu_base_endo=mu_base_endo,
+            mu_base_epi=mu_base_epi,
+            mu_apex_endo=mu_apex_endo,
+            mu_apex_epi=mu_apex_epi,
+            psize_ref=psize_ref,
+        )
+    comm.barrier()
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
 
     # if aha:
     #     from .aha import lv_aha
@@ -554,13 +516,14 @@ def lv_ellipsoid(
     #     with XDMFFile((outdir / "cfun.xdmf").as_posix()) as xdmf:
     #         xdmf.write(geometry.marker_functions.cfun)
 
-    with open(outdir / "markers.json", "w") as f:
-        json.dump(geometry.markers, f, default=utils.json_serial)
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
 
     if create_fibers:
-        from .fibers._lv_ellipsoid import create_microstructure
+        from .fibers.lv_ellipsoid import create_microstructure
 
-        f0, s0, n0 = create_microstructure(
+        create_microstructure(
             mesh=geometry.mesh,
             ffun=geometry.ffun,
             markers=geometry.markers,
@@ -574,7 +537,7 @@ def lv_ellipsoid(
             outdir=outdir,
         )
 
-    geo = Geometry.from_folder(outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
     # if aha:
     #     # Update schema
     #     from .geometry import H5Path
@@ -583,14 +546,11 @@ def lv_ellipsoid(
     #     cfun["fname"] = "cfun.xdmf:f"
     #     geo.schema["cfun"] = H5Path(**cfun)
 
-    if _tmpfile is not None:
-        _tmpfile.__exit__(None, None, None)
-
     return geo
 
 
 def slab(
-    outdir: Path | str | None = None,
+    outdir: Path | str,
     lx: float = 20.0,
     ly: float = 7.0,
     lz: float = 3.0,
@@ -605,8 +565,7 @@ def slab(
     Parameters
     ----------
     outdir : Optional[Path], optional
-        Directory where to save the results. If not provided a temporary
-        directory will be created, by default None
+        Directory where to save the results.
     lx : float, optional
         Length of slab the x-direction, by default 20.0
     ly : float, optional
@@ -626,56 +585,47 @@ def slab(
 
     Returns
     -------
-    Optional[Geometry]
+    Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
-        Returns None if dolfin is not installed.
 
-    Raises
-    ------
-    ImportError
-        If gmsh is not installed
     """
-
-    _tmpfile = None
-    if outdir is None:
-        _tmpfile = tempfile.TemporaryDirectory()
-        outdir = _tmpfile.__enter__()
-
+    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
-    outdir.mkdir(exist_ok=True, parents=True)
-
-    with open(outdir / "info.json", "w") as f:
-        json.dump(
-            {
-                "lx": lx,
-                "ly": ly,
-                "lz": lz,
-                "dx": dx,
-                "create_fibers": create_fibers,
-                "fibers_angle_endo": fiber_angle_endo,
-                "fibers_angle_epi": fiber_angle_epi,
-                "fiber_space": fiber_space,
-                # "mesh_type": MeshTypes.slab.value,
-                "cardiac_geometry_version": __version__,
-                "timestamp": datetime.datetime.now().isoformat(),
-            },
-            f,
-            indent=2,
-            default=utils.json_serial,
-        )
-
-    from cardiac_geometries_core import slab
-
     mesh_name = outdir / "slab.msh"
-    slab(mesh_name=mesh_name.as_posix(), lx=lx, ly=ly, lz=lz, dx=dx)
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
 
-    geometry = utils.gmsh2dolfin(mesh_name, unlink=False)
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                {
+                    "lx": lx,
+                    "ly": ly,
+                    "lz": lz,
+                    "dx": dx,
+                    "create_fibers": create_fibers,
+                    "fibers_angle_endo": fiber_angle_endo,
+                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_space": fiber_space,
+                    # "mesh_type": MeshTypes.slab.value,
+                    "cardiac_geometry_version": __version__,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                },
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
 
-    with open(outdir / "markers.json", "w") as f:
-        json.dump(geometry.markers, f, default=utils.json_serial)
+        cgc.slab(mesh_name=mesh_name.as_posix(), lx=lx, ly=ly, lz=lz, dx=dx)
+    comm.barrier()
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
 
     if create_fibers:
-        from .fibers._slab import create_microstructure
+        from .fibers.slab import create_microstructure
 
         create_microstructure(
             mesh=geometry.mesh,
@@ -687,16 +637,13 @@ def slab(
             outdir=outdir,
         )
 
-    geo = Geometry.from_folder(outdir)
-
-    if _tmpfile is not None:
-        _tmpfile.__exit__(None, None, None)
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
 
     return geo
 
 
 def slab_in_bath(
-    outdir: Path | str | None = None,
+    outdir: Path | str,
     lx: float = 1.0,
     ly: float = 0.01,
     lz: float = 0.5,
@@ -709,9 +656,8 @@ def slab_in_bath(
 
     Parameters
     ----------
-    outdir : Optional[Path], optional
-        Directory where to save the results. If not provided a temporary
-        directory will be created, by default None
+    outdir : Path
+        Directory where to save the results.
     lx : float, optional
         Length of slab the x-direction, by default 1.0
     ly : float, optional
@@ -729,65 +675,53 @@ def slab_in_bath(
 
     Returns
     -------
-    Optional[Geometry]
+    Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
-        Returns None if dolfin is not installed.
 
-    Raises
-    ------
-    ImportError
-        If gmsh is not installed
     """
-
-    _tmpfile = None
-    if outdir is None:
-        _tmpfile = tempfile.TemporaryDirectory()
-        outdir = _tmpfile.__enter__()
+    comm = MPI.COMM_WORLD
 
     outdir = Path(outdir)
-    outdir.mkdir(exist_ok=True, parents=True)
+    mesh_name = outdir / "slab_in_bath.msh"
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
 
-    with open(outdir / "info.json", "w") as f:
-        json.dump(
-            {
-                "lx": lx,
-                "ly": ly,
-                "lz": lz,
-                "bx": bx,
-                "by": by,
-                "bz": bz,
-                "dx": dx,
-                # "mesh_type": MeshTypes.slab.value,
-                "cardiac_geometry_version": __version__,
-                "timestamp": datetime.datetime.now().isoformat(),
-            },
-            f,
-            indent=2,
-            default=utils.json_serial,
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                {
+                    "lx": lx,
+                    "ly": ly,
+                    "lz": lz,
+                    "bx": bx,
+                    "by": by,
+                    "bz": bz,
+                    "dx": dx,
+                    # "mesh_type": MeshTypes.slab.value,
+                    "cardiac_geometry_version": __version__,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                },
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
+
+        cgc.slab_in_bath(
+            mesh_name=mesh_name.as_posix(),
+            lx=lx,
+            ly=ly,
+            lz=lz,
+            bx=bx,
+            by=by,
+            bz=bz,
+            dx=dx,
         )
 
-    from cardiac_geometries_core import slab_in_bath
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
 
-    mesh_name = outdir / "slab_in_bath.msh"
-    slab_in_bath(
-        mesh_name=mesh_name.as_posix(),
-        lx=lx,
-        ly=ly,
-        lz=lz,
-        bx=bx,
-        by=by,
-        bz=bz,
-        dx=dx,
-    )
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
 
-    geometry = utils.gmsh2dolfin(mesh_name, unlink=False)
-
-    with open(outdir / "markers.json", "w") as f:
-        json.dump(geometry.markers, f, default=utils.json_serial)
-
-    geo = Geometry.from_folder(outdir)
-
-    if _tmpfile is not None:
-        _tmpfile.__exit__(None, None, None)
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
 
     return geo

@@ -26,7 +26,7 @@ dependencies = [
     "structlog",
     "cardiac-geometries-core",
     "rich-click",
-    "adios4dolfinx"
+    "adios4dolfinx@git+https://github.com/jorgensd/adios4dolfinx#egg=main"
 ]
 
 [project.readme]
@@ -66,7 +66,6 @@ namespaces = false
 test = "pytest"
 
 [tool.pytest.ini_options]
-addopts = "--cov=cardiac_geometries --cov-report html --cov-report xml --cov-report term-missing -v"
 testpaths = ["tests"]
 
 [tool.isort]
