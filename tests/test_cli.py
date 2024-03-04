@@ -17,12 +17,13 @@ from click.testing import CliRunner
 )
 def test_script(script, tmp_path: Path):
     runner = CliRunner()
-    path = tmp_path
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
 
     res = runner.invoke(script, [path.as_posix(), "--create-fibers"])
     assert res.exit_code == 0
     assert path.is_dir()
-    comm = MPI.COMM_WORLD
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
     assert geo.f0 is not None
@@ -39,10 +40,13 @@ def test_script(script, tmp_path: Path):
 )
 def test_script_no_fibers(script, tmp_path: Path):
     runner = CliRunner()
-    path = tmp_path
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
     res = runner.invoke(script, [path.as_posix()])
     assert res.exit_code == 0
     assert path.is_dir()
-    comm = MPI.COMM_WORLD
+
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
