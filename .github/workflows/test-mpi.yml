@@ -1,0 +1,21 @@
+name: Test package
+
+on: [push]
+
+
+jobs:
+  test-code:
+    runs-on: ubuntu-22.04
+    container: ghcr.io/fenics/dolfinx/dolfinx:nightly
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install package
+        run: python3 -m pip install .[test]
+
+      - name: Run tests
+        run: mpirun -n 2 python3 -m pytest -v

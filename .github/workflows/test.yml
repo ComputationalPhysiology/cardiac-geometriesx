@@ -18,7 +18,7 @@ jobs:
         run: python3 -m pip install .[test]
 
       - name: Run tests
-        run: python3 -m pytest -v
+        run: python3 -m pytest -v --cov=cardiac_geometries --cov-report html --cov-report xml --cov-report term-missing
 
       - name: Extract Coverage
         run: |
@@ -32,16 +32,3 @@ jobs:
         with:
           name: html-report
           path: htmlcov
-
-      - name: Create coverage Badge
-        if: github.ref == 'refs/heads/main'
-        uses: schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_SECRET }}
-          gistID: a7290de789564f03eb6b1ee122fce423
-          filename: fenicsx-pulse-coverage.json
-          label: Coverage
-          message: ${{ env.total }}%
-          minColorRange: 50
-          maxColorRange: 90
-          valColorRange: ${{ env.total }}
