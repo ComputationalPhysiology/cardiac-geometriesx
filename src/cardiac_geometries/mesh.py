@@ -166,7 +166,7 @@ def biv_ellipsoid(
             c_epi_rv=c_epi_rv,
         )
     comm.barrier()
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -367,7 +367,7 @@ def biv_ellipsoid_torso(
         )
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -500,7 +500,7 @@ def lv_ellipsoid(
         )
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
     # if aha:
     #     from .aha import lv_aha
@@ -618,7 +618,7 @@ def slab(
         cgc.slab(mesh_name=mesh_name.as_posix(), lx=lx, ly=ly, lz=lz, dx=dx)
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -716,7 +716,7 @@ def slab_in_bath(
             dx=dx,
         )
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, unlink=False)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
