@@ -67,19 +67,15 @@ class GMshGeometry(NamedTuple):
     markers: dict[str, tuple[int, int]]
 
 
-def read_ffun(mesh, filename: str | Path) -> dolfinx.mesh.MeshTags | None:
-    mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
-    with dolfinx.io.XDMFFile(mesh.comm, filename, "r") as xdmf:
-        ffun = xdmf.read_meshtags(mesh, name="Facet tags")
-
-    return ffun
-
-
-def read_mesh(comm, filename: str | Path) -> tuple[dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags | None]:
+def read_mesh(
+    comm, filename: str | Path
+) -> tuple[dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags | None, dolfinx.mesh.MeshTags | None]:
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
         mesh = xdmf.read_mesh(name="Mesh")
         cfun = xdmf.read_meshtags(mesh, name="Cell tags")
-    return mesh, cfun
+        mesh.topology.create_connectivity(2, 3)
+        ffun = xdmf.read_meshtags(mesh, name="Facet tags")
+    return mesh, cfun, ffun
 
 
 def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
@@ -95,7 +91,10 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
         gmsh.model.add("Mesh from file")
         gmsh.merge(str(msh_file))
         mesh, ct, ft = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm, 0)
-        markers = {gmsh.model.getPhysicalName(*v): v for v in gmsh.model.getPhysicalGroups()}
+        markers = {
+            gmsh.model.getPhysicalName(*v): tuple(reversed(v))
+            for v in gmsh.model.getPhysicalGroups()
+        }
         gmsh.finalize()
     else:
         mesh, ct, ft = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm, 0)
