@@ -1,11 +1,11 @@
-from typing import NamedTuple
 from pathlib import Path
+from typing import NamedTuple
 
-import dolfinx
-from dolfinx.fem.petsc import LinearProblem
-import ufl
-import numpy as np
 import adios4dolfinx
+import dolfinx
+import numpy as np
+import ufl
+from dolfinx.fem.petsc import LinearProblem
 
 
 class Microstructure(NamedTuple):
