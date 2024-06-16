@@ -1,8 +1,8 @@
 from pathlib import Path
 
+import basix
 import dolfinx
 import numpy as np
-import basix
 
 from . import utils
 

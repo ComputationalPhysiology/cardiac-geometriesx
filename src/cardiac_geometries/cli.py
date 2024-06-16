@@ -6,7 +6,6 @@ import rich_click as click
 
 from . import mesh
 
-
 meta = metadata("cardiac-geometriesx")
 __version__ = meta["Version"]
 __author__ = meta["Author"]

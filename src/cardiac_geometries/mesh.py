@@ -1,12 +1,13 @@
-from pathlib import Path
-import math
-import json
 import datetime
+import json
+import math
 from importlib.metadata import metadata
-from structlog import get_logger
+from pathlib import Path
 
 from mpi4py import MPI
+
 import cardiac_geometries_core as cgc
+from structlog import get_logger
 
 from . import utils
 from .geometry import Geometry

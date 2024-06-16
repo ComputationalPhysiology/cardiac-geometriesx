@@ -1,10 +1,12 @@
-from dataclasses import dataclass, field
 import json
-from pathlib import Path
-import dolfinx
-from mpi4py import MPI
 import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from mpi4py import MPI
+
 import adios4dolfinx
+import dolfinx
 import numpy as np
 
 from . import utils

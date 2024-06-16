@@ -1,10 +1,11 @@
 from pathlib import Path
-import pytest
-from mpi4py import MPI
-from cardiac_geometries import cli
 
-from cardiac_geometries import Geometry
+from mpi4py import MPI
+
+import pytest
 from click.testing import CliRunner
+
+from cardiac_geometries import Geometry, cli
 
 
 @pytest.mark.parametrize(

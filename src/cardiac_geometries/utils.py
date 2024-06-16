@@ -1,14 +1,14 @@
-from pathlib import Path
 import tempfile
-from typing import NamedTuple, Iterable
 from enum import Enum
+from pathlib import Path
+from typing import Iterable, NamedTuple
 
-import numpy as np
 from mpi4py import MPI
-from structlog import get_logger
+
 import basix
 import dolfinx
-
+import numpy as np
+from structlog import get_logger
 
 logger = get_logger()
 
