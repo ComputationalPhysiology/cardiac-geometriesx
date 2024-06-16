@@ -85,15 +85,9 @@ class Geometry:
 
         # Read mesh
         if (folder / "mesh.xdmf").exists():
-            mesh, cfun = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
+            mesh, cfun, ffun = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
         else:
             raise ValueError("No mesh file found")
-
-        # Read meshtags
-        if (folder / "triangle_mesh.xdmf").exists():
-            ffun = utils.read_ffun(mesh=mesh, filename=folder / "triangle_mesh.xdmf")
-        else:
-            ffun = None
 
         # Read markers
         if (folder / "markers.json").exists():
