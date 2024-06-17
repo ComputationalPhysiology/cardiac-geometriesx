@@ -43,6 +43,7 @@ def biv_ellipsoid(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    verbose: bool = False,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -96,6 +97,8 @@ def biv_ellipsoid(
         Angle for the epicardium, by default +60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
+    verbose : bool, optional
+        If True print information from gmsh, by default False
 
     Returns
     -------
@@ -165,6 +168,7 @@ def biv_ellipsoid(
             a_epi_rv=a_epi_rv,
             b_epi_rv=b_epi_rv,
             c_epi_rv=c_epi_rv,
+            verbose=verbose,
         )
     comm.barrier()
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
@@ -221,6 +225,7 @@ def biv_ellipsoid_torso(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    verbose: bool = False,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -286,6 +291,8 @@ def biv_ellipsoid_torso(
         Angle for the epicardium, by default +60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
+    verbose : bool, optional
+        If True print information from gmsh, by default False
 
     Returns
     -------
@@ -365,6 +372,7 @@ def biv_ellipsoid_torso(
             a_epi_rv=a_epi_rv,
             b_epi_rv=b_epi_rv,
             c_epi_rv=c_epi_rv,
+            verbose=verbose,
         )
     comm.barrier()
 
@@ -413,6 +421,7 @@ def lv_ellipsoid(
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
     aha: bool = True,
+    verbose: bool = False,
 ) -> Geometry:
     """Create an LV ellipsoidal geometry
 
@@ -448,6 +457,8 @@ def lv_ellipsoid(
         Function space for fibers of the form family_degree, by default "P_1"
     aha : bool, optional
         If True create 17-segment AHA regions
+    verbose : bool, optional
+        If True print information from gmsh, by default False
 
     Returns
     -------
@@ -498,6 +509,7 @@ def lv_ellipsoid(
             mu_apex_endo=mu_apex_endo,
             mu_apex_epi=mu_apex_epi,
             psize_ref=psize_ref,
+            verbose=verbose,
         )
     comm.barrier()
 
@@ -560,6 +572,7 @@ def slab(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    verbose: bool = False,
 ) -> Geometry:
     """Create slab geometry
 
@@ -583,6 +596,8 @@ def slab(
         Angle for the epicardium, by default +60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
+    verbose : bool, optional
+        If True print information from gmsh, by default False
 
     Returns
     -------
@@ -616,7 +631,14 @@ def slab(
                 default=utils.json_serial,
             )
 
-        cgc.slab(mesh_name=mesh_name.as_posix(), lx=lx, ly=ly, lz=lz, dx=dx)
+        cgc.slab(
+            mesh_name=mesh_name.as_posix(),
+            lx=lx,
+            ly=ly,
+            lz=lz,
+            dx=dx,
+            verbose=verbose,
+        )
     comm.barrier()
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
@@ -652,6 +674,7 @@ def slab_in_bath(
     by: float = 0.0,
     bz: float = 0.1,
     dx: float = 0.001,
+    verbose: bool = False,
 ) -> Geometry:
     """Create slab geometry
 
@@ -673,6 +696,8 @@ def slab_in_bath(
         Thickness of bath the z-direction, by default 0.1
     dx : float, optional
         Element size, by default 0.001
+    verbose : bool, optional
+        If True print information from gmsh, by default False
 
     Returns
     -------
@@ -715,6 +740,7 @@ def slab_in_bath(
             by=by,
             bz=bz,
             dx=dx,
+            verbose=verbose,
         )
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
