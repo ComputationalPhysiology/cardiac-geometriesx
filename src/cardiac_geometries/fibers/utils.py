@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Sequence
 
 import adios4dolfinx
 import dolfinx
@@ -15,28 +15,27 @@ class Microstructure(NamedTuple):
 
 
 def save_microstructure(
-    mesh: dolfinx.mesh.Mesh, system: Microstructure, outdir: str | Path
+    mesh: dolfinx.mesh.Mesh, functions: Sequence[dolfinx.fem.Function], outdir: str | Path
 ) -> None:
     from ..utils import element2array
 
     # Save for paraview visualization
     with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "microstructure.xdmf", "w") as file:
         file.write_mesh(mesh)
-        file.write_function(system.f0)
-        file.write_function(system.s0)
-        file.write_function(system.n0)
+        for f in functions:
+            file.write_function(f)
 
     # Save with proper function space
     filename = Path(outdir) / "microstructure.bp"
-    adios4dolfinx.write_function(u=system.f0, filename=filename)
-    adios4dolfinx.write_function(u=system.s0, filename=filename)
-    adios4dolfinx.write_function(u=system.n0, filename=filename)
-    arr = element2array(system.f0.ufl_element().basix_element)
+    for function in functions:
+        adios4dolfinx.write_function(u=function, filename=filename)
+
+    attributes = {f.name: element2array(f.ufl_element().basix_element) for f in functions}
     adios4dolfinx.write_attributes(
         comm=mesh.comm,
         filename=filename,
         name="function_space",
-        attributes={k: arr for k in ("f0", "s0", "n0")},
+        attributes=attributes,
     )
 
 
