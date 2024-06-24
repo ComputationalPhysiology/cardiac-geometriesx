@@ -40,8 +40,8 @@ def biv_ellipsoid(
     b_epi_rv: float = 2.5,
     c_epi_rv: float = 2.0,
     create_fibers: bool = False,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
 ) -> Geometry:
@@ -92,9 +92,9 @@ def biv_ellipsoid(
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
@@ -102,7 +102,7 @@ def biv_ellipsoid(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -178,7 +178,30 @@ def biv_ellipsoid(
             json.dump(geometry.markers, f, default=utils.json_serial)
     comm.barrier()
     if create_fibers:
-        raise NotImplementedError("Fibers not implemented yet for biv ellipsoid.")
+        try:
+            import ldrb
+        except ImportError:
+            msg = (
+                "To create fibers you need to install the ldrb package "
+                "which you can install with pip install fenicsx-ldrb"
+            )
+            raise ImportError(msg)
+
+        system = ldrb.dolfinx_ldrb(
+            mesh=geometry.mesh,
+            ffun=geometry.ffun,
+            markers=geometry.markers,
+            alpha_endo_lv=fiber_angle_endo,
+            alpha_epi_lv=fiber_angle_epi,
+            beta_endo_lv=0,
+            beta_epi_lv=0,
+            fiber_space=fiber_space,
+        )
+        from .fibers.utils import save_microstructure
+
+        save_microstructure(
+            mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=outdir
+        )
         # from .fibers._biv_ellipsoid import create_biv_fibers
 
         # create_biv_fibers(
@@ -222,8 +245,8 @@ def biv_ellipsoid_torso(
     b_epi_rv: float = 2.5,
     c_epi_rv: float = 2.0,
     create_fibers: bool = False,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
 ) -> Geometry:
@@ -286,9 +309,9 @@ def biv_ellipsoid_torso(
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
@@ -296,7 +319,7 @@ def biv_ellipsoid_torso(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -417,8 +440,8 @@ def lv_ellipsoid(
     mu_apex_epi: float = -math.pi,
     mu_base_epi: float = -math.acos(5 / 20),
     create_fibers: bool = False,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     aha: bool = True,
     verbose: bool = False,
@@ -450,9 +473,9 @@ def lv_ellipsoid(
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     aha : bool, optional
@@ -462,7 +485,7 @@ def lv_ellipsoid(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -569,8 +592,8 @@ def slab(
     lz: float = 3.0,
     dx: float = 1.0,
     create_fibers: bool = True,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
 ) -> Geometry:
@@ -591,9 +614,9 @@ def slab(
     create_fibers : bool, optional
         If True create analytic fibers, by default True
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
@@ -601,7 +624,7 @@ def slab(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -701,7 +724,7 @@ def slab_in_bath(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
