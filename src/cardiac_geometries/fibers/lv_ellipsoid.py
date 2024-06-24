@@ -131,9 +131,11 @@ def create_microstructure(
     )
 
     if outdir is not None:
-        with dolfinx.io.XDMFFile(mesh.comm, Path(outdir) / "laplace.xdmf", "w") as file:
-            file.write_mesh(mesh)
-            file.write_function(t)
+        with dolfinx.io.VTXWriter(
+            mesh.comm, Path(outdir) / "laplace.bp", [t], engine="BP4"
+        ) as file:
+            file.write(0.0)
+
     system = compute_system(
         t,
         function_space=function_space,
