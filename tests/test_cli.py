@@ -16,13 +16,14 @@ from cardiac_geometries import Geometry, cli
     ],
     ids=["slab", "lv_ellipsoid"],
 )
-def test_script(script, tmp_path: Path):
+@pytest.mark.parametrize("fiber_space", ["P_1", "P_2"])
+def test_script(fiber_space, script, tmp_path: Path):
     runner = CliRunner()
 
     comm = MPI.COMM_WORLD
     path = comm.bcast(tmp_path, root=0)
 
-    res = runner.invoke(script, [path.as_posix(), "--create-fibers"])
+    res = runner.invoke(script, [path.as_posix(), "--create-fibers", "--fiber-space", fiber_space])
     assert res.exit_code == 0
     assert path.is_dir()
     geo = Geometry.from_folder(comm=comm, folder=path)
