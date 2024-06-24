@@ -178,7 +178,30 @@ def biv_ellipsoid(
             json.dump(geometry.markers, f, default=utils.json_serial)
     comm.barrier()
     if create_fibers:
-        raise NotImplementedError("Fibers not implemented yet for biv ellipsoid.")
+        try:
+            import ldrb
+        except ImportError:
+            msg = (
+                "To create fibers you need to install the ldrb package "
+                "which you can install with pip install fenicsx-ldrb"
+            )
+            raise ImportError(msg)
+
+        system = ldrb.dolfinx_ldrb(
+            mesh=geometry.mesh,
+            ffun=geometry.ffun,
+            markers=geometry.markers,
+            alpha_endo_lv=fiber_angle_endo,
+            alpha_epi_lv=fiber_angle_epi,
+            beta_endo_lv=0,
+            beta_epi_lv=0,
+            fiber_space=fiber_space,
+        )
+        from .fibers.utils import save_microstructure
+
+        save_microstructure(
+            mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=outdir
+        )
         # from .fibers._biv_ellipsoid import create_biv_fibers
 
         # create_biv_fibers(
