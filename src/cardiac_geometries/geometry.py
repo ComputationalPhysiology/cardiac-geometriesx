@@ -12,7 +12,7 @@ import numpy as np
 from . import utils
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass#(frozen=True, slots=True)
 class Geometry:
     mesh: dolfinx.mesh.Mesh
     markers: dict[str, tuple[str, str]] = field(default_factory=dict)
