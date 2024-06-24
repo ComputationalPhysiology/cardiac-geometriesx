@@ -40,8 +40,8 @@ def biv_ellipsoid(
     b_epi_rv: float = 2.5,
     c_epi_rv: float = 2.0,
     create_fibers: bool = False,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
 ) -> Geometry:
@@ -92,9 +92,9 @@ def biv_ellipsoid(
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
@@ -222,8 +222,8 @@ def biv_ellipsoid_torso(
     b_epi_rv: float = 2.5,
     c_epi_rv: float = 2.0,
     create_fibers: bool = False,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
 ) -> Geometry:
@@ -286,9 +286,9 @@ def biv_ellipsoid_torso(
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
@@ -417,8 +417,8 @@ def lv_ellipsoid(
     mu_apex_epi: float = -math.pi,
     mu_base_epi: float = -math.acos(5 / 20),
     create_fibers: bool = False,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     aha: bool = True,
     verbose: bool = False,
@@ -450,9 +450,9 @@ def lv_ellipsoid(
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     aha : bool, optional
@@ -569,8 +569,8 @@ def slab(
     lz: float = 3.0,
     dx: float = 1.0,
     create_fibers: bool = True,
-    fiber_angle_endo: float = -60,
-    fiber_angle_epi: float = +60,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
 ) -> Geometry:
@@ -591,9 +591,9 @@ def slab(
     create_fibers : bool, optional
         If True create analytic fibers, by default True
     fiber_angle_endo : float, optional
-        Angle for the endocardium, by default -60
+        Angle for the endocardium, by default 60
     fiber_angle_epi : float, optional
-        Angle for the epicardium, by default +60
+        Angle for the epicardium, by default -60
     fiber_space : str, optional
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional

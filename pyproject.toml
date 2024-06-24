@@ -38,6 +38,12 @@ dev = [
     "wheel",
 ]
 docs = [
+    "jupyter-book",
+    "jupytext",
+    "jupyter",
+    "pyvista[all]>=0.43.0",
+    "trame-vuetify",
+    "ipywidgets",
 ]
 test = [
     "pre-commit",
@@ -80,6 +86,7 @@ exclude = [
 
 # Exclude a variety of commonly ignored directories.
 exclude = [
+    "demos/*.py",
     ".bzr",
     ".direnv",
     ".eggs",
