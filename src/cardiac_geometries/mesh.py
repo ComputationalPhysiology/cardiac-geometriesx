@@ -102,7 +102,7 @@ def biv_ellipsoid(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -319,7 +319,7 @@ def biv_ellipsoid_torso(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -485,7 +485,7 @@ def lv_ellipsoid(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -624,7 +624,7 @@ def slab(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
@@ -724,7 +724,7 @@ def slab_in_bath(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
