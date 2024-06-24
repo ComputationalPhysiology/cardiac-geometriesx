@@ -20,9 +20,11 @@ def save_microstructure(
     from ..utils import element2array
 
     # Save for paraview visualization
-    with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / "microstructure-viz.bp", functions, engine="BP4") as file:
+    with dolfinx.io.VTXWriter(
+        mesh.comm, Path(outdir) / "microstructure-viz.bp", functions, engine="BP4"
+    ) as file:
         file.write(0.0)
-        
+
     # Save with proper function space
     filename = Path(outdir) / "microstructure.bp"
     for function in functions:
