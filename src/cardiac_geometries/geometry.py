@@ -16,8 +16,10 @@ from . import utils
 class Geometry:
     mesh: dolfinx.mesh.Mesh
     markers: dict[str, tuple[int, int]] = field(default_factory=dict)
-    ffun: dolfinx.mesh.MeshTags | None = None
     cfun: dolfinx.mesh.MeshTags | None = None
+    ffun: dolfinx.mesh.MeshTags | None = None
+    efun: dolfinx.mesh.MeshTags | None = None
+    vfun: dolfinx.mesh.MeshTags | None = None
     f0: dolfinx.fem.Function | None = None
     s0: dolfinx.fem.Function | None = None
     n0: dolfinx.fem.Function | None = None
@@ -37,11 +39,33 @@ class Geometry:
             attributes={k: np.array(v, dtype=np.uint8) for k, v in self.markers.items()},
         )
 
+        if self.cfun is not None:
+            adios4dolfinx.write_meshtags(
+                meshtags=self.cfun,
+                mesh=self.mesh,
+                filename=path,
+                meshtag_name="Cell tags",
+            )
         if self.ffun is not None:
             adios4dolfinx.write_meshtags(
                 meshtags=self.ffun,
                 mesh=self.mesh,
                 filename=path,
+                meshtag_name="Facet tags",
+            )
+        if self.efun is not None:
+            adios4dolfinx.write_meshtags(
+                meshtags=self.efun,
+                mesh=self.mesh,
+                filename=path,
+                meshtag_name="Edge tags",
+            )
+        if self.vfun is not None:
+            adios4dolfinx.write_meshtags(
+                meshtags=self.vfun,
+                mesh=self.mesh,
+                filename=path,
+                meshtag_name="Vertex tags",
             )
 
         if self.f0 is not None:
@@ -65,7 +89,10 @@ class Geometry:
         path = Path(path)
         mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
         markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
+        cfun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Cell tags", filename=path)
         ffun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Facet tags", filename=path)
+        efun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Edge tags", filename=path)
+        vfun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Vertex tags", filename=path)
         function_space = adios4dolfinx.read_attributes(
             comm=comm, filename=path, name="function_space"
         )
@@ -79,7 +106,17 @@ class Geometry:
         adios4dolfinx.read_function(u=f0, filename=path, name="f0")
         adios4dolfinx.read_function(u=s0, filename=path, name="s0")
         adios4dolfinx.read_function(u=n0, filename=path, name="n0")
-        return cls(mesh=mesh, markers=markers, ffun=ffun, f0=f0, s0=s0, n0=n0)
+        return cls(
+            mesh=mesh,
+            markers=markers,
+            ffun=ffun,
+            cfun=cfun,
+            efun=efun,
+            vfun=vfun,
+            f0=f0,
+            s0=s0,
+            n0=n0,
+        )
 
     @classmethod
     def from_folder(cls, comm: MPI.Intracomm, folder: str | Path) -> "Geometry":
@@ -119,4 +156,14 @@ class Geometry:
         else:
             f0 = s0 = n0 = None
 
-        return cls(mesh=mesh, ffun=ffun, cfun=cfun, markers=markers, f0=f0, s0=s0, n0=n0)
+        return cls(
+            mesh=mesh,
+            ffun=ffun,
+            cfun=cfun,
+            vfun=vfun,
+            efun=efun,
+            markers=markers,
+            f0=f0,
+            s0=s0,
+            n0=n0,
+        )
