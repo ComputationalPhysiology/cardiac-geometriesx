@@ -15,7 +15,7 @@ from . import utils
 @dataclass  # (frozen=True, slots=True)
 class Geometry:
     mesh: dolfinx.mesh.Mesh
-    markers: dict[str, tuple[str, str]] = field(default_factory=dict)
+    markers: dict[str, tuple[int, int]] = field(default_factory=dict)
     ffun: dolfinx.mesh.MeshTags | None = None
     cfun: dolfinx.mesh.MeshTags | None = None
     f0: dolfinx.fem.Function | None = None
