@@ -299,13 +299,23 @@ class GMshGeometry(NamedTuple):
 
 def read_mesh(
     comm, filename: str | Path
-) -> tuple[dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags | None, dolfinx.mesh.MeshTags | None]:
+) -> tuple[
+    dolfinx.mesh.Mesh,
+    dolfinx.mesh.MeshTags,
+    dolfinx.mesh.MeshTags,
+    dolfinx.mesh.MeshTags,
+    dolfinx.mesh.MeshTags,
+]:
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
         mesh = xdmf.read_mesh(name="Mesh")
         cfun = xdmf.read_meshtags(mesh, name="Cell tags")
         mesh.topology.create_connectivity(2, 3)
         ffun = xdmf.read_meshtags(mesh, name="Facet tags")
-    return mesh, cfun, ffun
+        mesh.topology.create_connectivity(1, 2)
+        efun = xdmf.read_meshtags(mesh, name="Edge tags")
+        mesh.topology.create_connectivity(0, 1)
+        vfun = xdmf.read_meshtags(mesh, name="Vertex tags")
+    return mesh, cfun, ffun, efun, vfun
 
 
 def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
@@ -340,21 +350,20 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     # Save tags to xdmf
     with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "w") as xdmf:
         xdmf.write_mesh(mesh)
-        mesh.topology.create_connectivity(2, 3)
         xdmf.write_meshtags(
             ct, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
         )
+        mesh.topology.create_connectivity(2, 3)
         xdmf.write_meshtags(
             ft, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
         )
+        mesh.topology.create_connectivity(1, 3)
         xdmf.write_meshtags(
             et, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
         )
+        mesh.topology.create_connectivity(0, 3)
         xdmf.write_meshtags(
             vt, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
         )
-
-    # vfun = None
-    # efun = None
 
     return GMshGeometry(mesh, ct, ft, et, vt, markers)

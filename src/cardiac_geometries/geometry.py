@@ -87,7 +87,7 @@ class Geometry:
 
         # Read mesh
         if (folder / "mesh.xdmf").exists():
-            mesh, cfun, ffun = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
+            mesh, cfun, ffun, efun, vfun = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
         else:
             raise ValueError("No mesh file found")
 
