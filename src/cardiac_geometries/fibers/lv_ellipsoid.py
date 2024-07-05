@@ -1,9 +1,9 @@
 from pathlib import Path
 
-import basix
 import dolfinx
 import numpy as np
 
+from ..utils import space_from_string
 from . import utils
 
 
@@ -82,14 +82,9 @@ def compute_system(
     s0 = np.cross(f0, n0, axis=0)
     s0 = utils.normalize(s0)
 
-    el = basix.ufl.element(
-        element.family_name,
-        mesh.ufl_cell().cellname(),
-        degree=element.degree,
-        discontinuous=element.discontinuous,
-        shape=(mesh.geometry.dim,),
+    Vv = space_from_string(
+        space_string=f"{element.family_name}_{element.degree}", mesh=mesh, dim=mesh.geometry.dim
     )
-    Vv = dolfinx.fem.functionspace(mesh, el)
 
     fiber = dolfinx.fem.Function(Vv)
     norm_f = np.linalg.norm(f0, axis=0)
@@ -131,10 +126,13 @@ def create_microstructure(
     )
 
     if outdir is not None:
-        with dolfinx.io.VTXWriter(
-            mesh.comm, Path(outdir) / "laplace.bp", [t], engine="BP4"
-        ) as file:
-            file.write(0.0)
+        try:
+            with dolfinx.io.VTXWriter(
+                mesh.comm, Path(outdir) / "laplace.bp", [t], engine="BP4"
+            ) as file:
+                file.write(0.0)
+        except RuntimeError:
+            pass
 
     system = compute_system(
         t,

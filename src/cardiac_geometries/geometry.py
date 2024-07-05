@@ -68,7 +68,7 @@ class Geometry:
             )
 
         if self.f0 is not None:
-            el = self.f0.ufl_element().basix_element
+            el = self.f0.ufl_element()
             arr = utils.element2array(el)
 
             adios4dolfinx.write_attributes(

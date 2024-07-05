@@ -7,6 +7,8 @@ import numpy as np
 import ufl
 from dolfinx.fem.petsc import LinearProblem
 
+from ..utils import space_from_string
+
 
 class Microstructure(NamedTuple):
     f0: dolfinx.fem.Function
@@ -20,17 +22,20 @@ def save_microstructure(
     from ..utils import element2array
 
     # Save for paraview visualization
-    with dolfinx.io.VTXWriter(
-        mesh.comm, Path(outdir) / "microstructure-viz.bp", functions, engine="BP4"
-    ) as file:
-        file.write(0.0)
+    try:
+        with dolfinx.io.VTXWriter(
+            mesh.comm, Path(outdir) / "microstructure-viz.bp", functions, engine="BP4"
+        ) as file:
+            file.write(0.0)
+    except RuntimeError:
+        pass
 
     # Save with proper function space
     filename = Path(outdir) / "microstructure.bp"
     for function in functions:
         adios4dolfinx.write_function(u=function, filename=filename)
 
-    attributes = {f.name: element2array(f.ufl_element().basix_element) for f in functions}
+    attributes = {f.name: element2array(f.ufl_element()) for f in functions}
     adios4dolfinx.write_attributes(
         comm=mesh.comm,
         filename=filename,
@@ -73,10 +78,10 @@ def laplace(
     uh = problem.solve()
 
     if function_space != "P_1":
-        family, degree = function_space.split("_")
-        W = dolfinx.fem.functionspace(mesh, (family, int(degree)))
+        W = space_from_string(function_space, mesh, dim=1)
         t = dolfinx.fem.Function(W)
-        t.interpolate(uh)
+        expr = dolfinx.fem.Expression(uh, W.element.interpolation_points())
+        t.interpolate(expr)
     else:
         t = uh
 
