@@ -299,23 +299,23 @@ class GMshGeometry(NamedTuple):
 
 def read_mesh(
     comm, filename: str | Path
-) -> tuple[
-    dolfinx.mesh.Mesh,
-    dolfinx.mesh.MeshTags,
-    dolfinx.mesh.MeshTags,
-    dolfinx.mesh.MeshTags,
-    dolfinx.mesh.MeshTags,
-]:
+) -> tuple[dolfinx.mesh.Mesh, dict[str, dolfinx.mesh.MeshTags]]:
+    tags = {}
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
         mesh = xdmf.read_mesh(name="Mesh")
-        cfun = xdmf.read_meshtags(mesh, name="Cell tags")
-        mesh.topology.create_connectivity(2, 3)
-        ffun = xdmf.read_meshtags(mesh, name="Facet tags")
-        mesh.topology.create_connectivity(1, 2)
-        efun = xdmf.read_meshtags(mesh, name="Edge tags")
-        mesh.topology.create_connectivity(0, 1)
-        vfun = xdmf.read_meshtags(mesh, name="Vertex tags")
-    return mesh, cfun, ffun, efun, vfun
+        for var, name, dim in [
+            ("cfun", "Cell tags", mesh.topology.dim),
+            ("ffun", "Facet tags", mesh.topology.dim - 1),
+            ("efun", "Edge tags", mesh.topology.dim - 2),
+            ("vfun", "Vertex tags", mesh.topology.dim - 3),
+        ]:
+            mesh.topology.create_connectivity(dim, mesh.topology.dim)
+            try:
+                tags[var] = xdmf.read_meshtags(mesh, name=name)
+            except RuntimeError:
+                continue
+
+    return mesh, tags
 
 
 def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:

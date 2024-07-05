@@ -89,33 +89,40 @@ class Geometry:
         path = Path(path)
         mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
         markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
-        cfun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Cell tags", filename=path)
-        ffun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Facet tags", filename=path)
-        efun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Edge tags", filename=path)
-        vfun = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name="Vertex tags", filename=path)
+        tags = {}
+        for name, meshtag_name in (
+            ("cfun", "Cell tags"),
+            ("ffun", "Facet tags"),
+            ("efun", "Edge tags"),
+            ("vfun", "Vertex tags"),
+        ):
+            try:
+                tags[name] = adios4dolfinx.read_meshtags(
+                    mesh=mesh, meshtag_name=meshtag_name, filename=path
+                )
+            except KeyError:
+                tags[name] = None
+
+        functions = {}
         function_space = adios4dolfinx.read_attributes(
             comm=comm, filename=path, name="function_space"
         )
-        element = utils.array2element(function_space["f0"])
-        # Assume same function space for all functions
-        V = dolfinx.fem.functionspace(mesh, element)
-        f0 = dolfinx.fem.Function(V, name="f0")
-        s0 = dolfinx.fem.Function(V, name="s0")
-        n0 = dolfinx.fem.Function(V, name="n0")
+        for name, el in function_space.items():
+            element = utils.array2element(el)
+            V = dolfinx.fem.functionspace(mesh, element)
+            f = dolfinx.fem.Function(V, name=name)
+            try:
+                adios4dolfinx.read_function(u=f, filename=path, name=name)
+            except KeyError:
+                continue
+            else:
+                functions[name] = f
 
-        adios4dolfinx.read_function(u=f0, filename=path, name="f0")
-        adios4dolfinx.read_function(u=s0, filename=path, name="s0")
-        adios4dolfinx.read_function(u=n0, filename=path, name="n0")
         return cls(
             mesh=mesh,
             markers=markers,
-            ffun=ffun,
-            cfun=cfun,
-            efun=efun,
-            vfun=vfun,
-            f0=f0,
-            s0=s0,
-            n0=n0,
+            **functions,
+            **tags,
         )
 
     @classmethod
@@ -124,7 +131,7 @@ class Geometry:
 
         # Read mesh
         if (folder / "mesh.xdmf").exists():
-            mesh, cfun, ffun, efun, vfun = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
+            mesh, tags = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
         else:
             raise ValueError("No mesh file found")
 
@@ -138,32 +145,26 @@ class Geometry:
         else:
             markers = {}
 
+        functions = {}
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
             function_space = adios4dolfinx.read_attributes(
                 comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
             )
-            # Assume same function space for all functions
-            element = utils.array2element(function_space["f0"])
-            V = dolfinx.fem.functionspace(mesh, element)
-            f0 = dolfinx.fem.Function(V, name="f0")
-            s0 = dolfinx.fem.Function(V, name="s0")
-            n0 = dolfinx.fem.Function(V, name="n0")
-
-            adios4dolfinx.read_function(u=f0, filename=microstructure_path, name="f0")
-            adios4dolfinx.read_function(u=s0, filename=microstructure_path, name="s0")
-            adios4dolfinx.read_function(u=n0, filename=microstructure_path, name="n0")
-        else:
-            f0 = s0 = n0 = None
+            for name, el in function_space.items():
+                element = utils.array2element(el)
+                V = dolfinx.fem.functionspace(mesh, element)
+                f = dolfinx.fem.Function(V, name=name)
+                try:
+                    adios4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
+                except KeyError:
+                    continue
+                else:
+                    functions[name] = f
 
         return cls(
             mesh=mesh,
-            ffun=ffun,
-            cfun=cfun,
-            vfun=vfun,
-            efun=efun,
             markers=markers,
-            f0=f0,
-            s0=s0,
-            n0=n0,
+            **functions,
+            **tags,
         )
