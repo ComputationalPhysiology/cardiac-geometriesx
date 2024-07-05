@@ -13,6 +13,9 @@ from structlog import get_logger
 
 logger = get_logger()
 
+quads = ("Quadrature", "Q", "Quad", "quadrature", "q", "quad")
+QUADNR = 42
+
 
 class GMshModel(NamedTuple):
     mesh: dolfinx.mesh.Mesh
@@ -246,11 +249,70 @@ def model_to_mesh(
     return GMshModel(mesh, ct, ft, et, vt)
 
 
-def element2array(el: basix.finite_element.FiniteElement) -> np.ndarray:
-    return np.array(
-        [int(el.family), int(el.cell_type), int(el.degree), int(el.discontinuous)],
-        dtype=np.uint8,
-    )
+def parse_element(space_string: str, mesh: dolfinx.mesh.Mesh, dim: int) -> basix.ufl._ElementBase:
+    """
+    Parse a string representation of a basix element family
+    """
+
+    family_str, degree_str = space_string.split("_")
+    kwargs = {"degree": int(degree_str), "cell": mesh.ufl_cell().cellname()}
+    if dim > 1:
+        if family_str in quads:
+            kwargs["value_shape"] = (dim,)
+        else:
+            kwargs["shape"] = (dim,)
+
+    if family_str in ["Lagrange", "P", "CG"]:
+        el = basix.ufl.element(family=basix.ElementFamily.P, discontinuous=False, **kwargs)
+    elif family_str in ["Discontinuous Lagrange", "DG", "dP"]:
+        el = basix.ufl.element(family=basix.ElementFamily.P, discontinuous=True, **kwargs)
+
+    elif family_str in quads:
+        el = basix.ufl.quadrature_element(scheme="default", **kwargs)
+    else:
+        families = list(basix.ElementFamily.__members__.keys())
+        msg = f"Unknown element family: {family_str!r}, available families: {families}"
+        raise ValueError(msg)
+    return el
+
+
+def space_from_string(
+    space_string: str, mesh: dolfinx.mesh.Mesh, dim: int
+) -> dolfinx.fem.functionspace:
+    """
+    Constructed a finite elements space from a string
+    representation of the space
+
+    Arguments
+    ---------
+    space_string : str
+        A string on the form {family}_{degree} which
+        determines the space. Example 'Lagrange_1'.
+    mesh : df.Mesh
+        The mesh
+    dim : int
+        1 for scalar space, 3 for vector space.
+    """
+    el = parse_element(space_string, mesh, dim)
+    return dolfinx.fem.functionspace(mesh, el)
+
+
+def element2array(el: basix.ufl._BlockedElement) -> np.ndarray:
+    if el.family_name in quads:
+        return np.array(
+            [QUADNR, int(el.cell_type), int(el.degree), 0],
+            dtype=np.uint8,
+        )
+    else:
+        return np.array(
+            [
+                int(el.basix_element.family),
+                int(el.cell_type),
+                int(el.degree),
+                int(el.basix_element.discontinuous),
+            ],
+            dtype=np.uint8,
+        )
 
 
 def number2Enum(num: int, enum: Iterable) -> Enum:
@@ -261,18 +323,24 @@ def number2Enum(num: int, enum: Iterable) -> Enum:
 
 
 def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
-    family = number2Enum(arr[0], basix.ElementFamily)
     cell_type = number2Enum(arr[1], basix.CellType)
     degree = int(arr[2])
     discontinuous = bool(arr[3])
-    # TODO: Shape is hardcoded to (3,) for now, but this should also be stored
-    return basix.ufl.element(
-        family=family,
-        cell=cell_type,
-        degree=degree,
-        discontinuous=discontinuous,
-        shape=(3,),
-    )
+    if arr[0] == QUADNR:
+        return basix.ufl.quadrature_element(
+            scheme="default", degree=degree, value_shape=(3,), cell=cell_type
+        )
+    else:
+        family = number2Enum(arr[0], basix.ElementFamily)
+
+        # TODO: Shape is hardcoded to (3,) for now, but this should also be stored
+        return basix.ufl.element(
+            family=family,
+            cell=cell_type,
+            degree=degree,
+            discontinuous=discontinuous,
+            shape=(3,),
+        )
 
 
 def handle_mesh_name(mesh_name: str = "") -> Path:
