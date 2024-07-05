@@ -1,9 +1,12 @@
+
 # Graphical user interface
 
 `cardiac-geometries` also comes with a graphical user interface based on [`streamlit`](https://streamlit.io).
 
 Here you see a quick demo of how it works
-![_](https://github.com/ComputationalPhysiology/cardiac-geometriesx/assets/2010323/f8697c72-847a-4ed8-b9d3-fcedf9e4088d)
+
+![_](_static/gui.mp4)
+
 
 To install the requirements for running the GUI, you do
 ```
