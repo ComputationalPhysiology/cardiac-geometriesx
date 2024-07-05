@@ -14,6 +14,14 @@ from structlog import get_logger
 logger = get_logger()
 
 
+class GMshModel(NamedTuple):
+    mesh: dolfinx.mesh.Mesh
+    cell_tags: dolfinx.mesh.MeshTags
+    facet_tags: dolfinx.mesh.MeshTags
+    edge_tags: dolfinx.mesh.MeshTags
+    vertex_tags: dolfinx.mesh.MeshTags
+
+
 # copied from https://github.com/FEniCS/dolfinx/blob/main/python/dolfinx/io/gmshio.py
 def model_to_mesh(
     model,
@@ -27,13 +35,7 @@ def model_to_mesh(
         ]
     ] = None,
     dtype=dolfinx.default_real_type,
-) -> tuple[
-    dolfinx.mesh.Mesh,
-    dolfinx.cpp.mesh.MeshTags_int32,
-    dolfinx.cpp.mesh.MeshTags_int32,
-    dolfinx.cpp.mesh.MeshTags_int32,
-    dolfinx.cpp.mesh.MeshTags_int32,
-]:
+) -> GMshModel:
     """Create a Mesh from a Gmsh model.
 
     Creates a :class:`dolfinx.mesh.Mesh` from the physical entities of
@@ -50,9 +52,10 @@ def model_to_mesh(
             distribution of cells across MPI ranks.
 
     Returns:
-        A triplet ``(mesh, cell_tags, facet_tags)``, where cell_tags
-        hold markers for the cells and facet tags holds markers for
-        facets (if tags are found in Gmsh model).
+        A tuple containing the :class:`dolfinx.mesh.Mesh` and
+        :class:`dolfinx.mesh.MeshTags` for cells, facets, edges and
+        vertices.
+
 
     Note:
         For performance, this function should only be called once for
@@ -240,7 +243,7 @@ def model_to_mesh(
             mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
         )
 
-    return (mesh, ct, ft, et, vt)
+    return GMshModel(mesh, ct, ft, et, vt)
 
 
 def element2array(el: basix.finite_element.FiniteElement) -> np.ndarray:
