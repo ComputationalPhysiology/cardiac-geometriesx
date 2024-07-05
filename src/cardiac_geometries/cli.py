@@ -869,8 +869,20 @@ def slab_in_bath(
     geo.save(outdir / "slab_in_bath.bp")
 
 
+@click.command("gui")
+def gui():
+    # Make sure we can import the required packages
+    from . import gui  # noqa: F401
+
+    gui_path = Path(__file__).parent.joinpath("gui.py")
+    import subprocess as sp
+
+    sp.run(["streamlit", "run", gui_path.as_posix()])
+
+
 app.add_command(lv_ellipsoid)
 app.add_command(biv_ellipsoid)
 app.add_command(biv_ellipsoid_torso)
 app.add_command(slab)
 app.add_command(slab_in_bath)
+app.add_command(gui)

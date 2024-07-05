@@ -51,6 +51,15 @@ test = [
     "pytest",
     "pytest-cov",
 ]
+gui = [
+    "streamlit",
+    "stpyvista",
+    "pyvista[all]>=0.43.0",
+    "trame-vuetify",
+    "ipywidgets",
+    "fenicsx-ldrb",
+
+]
 
 [project.scripts]
 geox = "cardiac_geometries.cli:app"
