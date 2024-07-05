@@ -27,8 +27,7 @@ class Geometry:
     def save(self, path: str | Path) -> None:
         path = Path(path)
 
-        if path.exists() and self.mesh.comm.rank == 0:
-            shutil.rmtree(path)
+        shutil.rmtree(path, ignore_errors=True)
         self.mesh.comm.barrier()
         adios4dolfinx.write_mesh(mesh=self.mesh, filename=path)
 
@@ -84,9 +83,12 @@ class Geometry:
         if self.n0 is not None:
             adios4dolfinx.write_function(u=self.n0, filename=path, name="n0")
 
+        self.mesh.comm.barrier()
+
     @classmethod
     def from_file(cls, comm: MPI.Intracomm, path: str | Path) -> "Geometry":
         path = Path(path)
+
         mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
         markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
         tags = {}

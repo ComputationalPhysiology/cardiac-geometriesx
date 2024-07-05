@@ -27,12 +27,13 @@ def test_script(fiber_space, script, tmp_path: Path):
     if fiber_space is not None:
         args.extend(["--create-fibers", "--fiber-space", fiber_space])
 
-    res = runner.invoke(script)
+    res = runner.invoke(script, args)
     assert res.exit_code == 0
     assert path.is_dir()
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
-    assert geo.f0 is not None
+    if fiber_space is not None:
+        assert geo.f0 is not None
 
 
 @pytest.mark.parametrize(
