@@ -7,6 +7,58 @@ from ..utils import space_from_string
 from . import utils
 
 
+def mu_theta(
+    x: np.ndarray, y: np.ndarray, z: np.ndarray, long_axis: int = 0
+) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """Get the angles mu and theta from the coordinates x, y, z
+    given the long axis.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        The x-coordinates
+    y : np.ndarray
+        The y-coordinates
+    z : np.ndarray
+        The z-coordinates
+    long_axis : int, optional
+        The long axis, by default 0 (x-axis)
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, list[int]]
+        The angles mu and theta and the permutation of the axes
+
+    Raises
+    ------
+    ValueError
+        If the long axis is not 0, 1 or 2
+    """
+    if long_axis == 0:
+        a = np.sqrt(y**2 + z**2)
+        b = x
+        theta = np.pi - np.arctan2(z, -y)
+        perm = [0, 1, 2]
+    elif long_axis == 1:
+        a = np.sqrt(x**2 + z**2)
+        b = y
+        theta = np.pi - np.arctan2(z, -x)
+        perm = [1, 0, 2]
+    elif long_axis == 2:
+        a = np.sqrt(x**2 + y**2)
+        b = z
+        theta = np.pi - np.arctan2(x, -y)
+        perm = [2, 1, 0]
+    else:
+        raise ValueError("Invalid long_axis")
+
+    mu = np.arctan2(a, b)
+
+    theta[mu < 1e-7] = 0.0
+
+    return mu, theta, perm
+
+
 def compute_system(
     t_func: dolfinx.fem.Function,
     r_short_endo=0.025,
@@ -15,8 +67,36 @@ def compute_system(
     r_long_epi=0.097,
     alpha_endo: float = -60,
     alpha_epi: float = 60,
+    long_axis: int = 0,
     **kwargs,
 ) -> utils.Microstructure:
+    """Compute the microstructure for the given time function.
+
+    Parameters
+    ----------
+    t_func : dolfinx.fem.Function
+        Solution of the Laplace equation
+    r_short_endo : float, optional
+        Short radius at the endocardium, by default 0.025
+    r_short_epi : float, optional
+        Short radius at the epicardium, by default 0.035
+    r_long_endo : float, optional
+        Long radius at the endocardium, by default 0.09
+    r_long_epi : float, optional
+        Long radius at the epicardium, by default 0.097
+    alpha_endo : float, optional
+        Angle at the endocardium, by default -60
+    alpha_epi : float, optional
+        Angle at the epicardium, by default 60
+    long_axis : int, optional
+        Long axis, by default 0 (x-axis)
+
+    Returns
+    -------
+    utils.Microstructure
+        The microstructure
+    """
+
     V = t_func.function_space
     element = V.ufl_element()
     mesh = V.mesh
@@ -40,11 +120,7 @@ def compute_system(
     y = dof_coordinates[:, 1]
     z = dof_coordinates[:, 2]
 
-    a = np.sqrt(y**2 + z**2) / rs
-    b = x / rl
-    mu = np.arctan2(a, b)
-    theta = np.pi - np.arctan2(z, -y)
-    theta[mu < 1e-7] = 0.0
+    mu, theta, perm = mu_theta(x, y, z, long_axis=long_axis)
 
     e_t = np.array(
         [
@@ -52,7 +128,7 @@ def compute_system(
             drs_dt * np.sin(mu) * np.cos(theta),
             drs_dt * np.sin(mu) * np.sin(theta),
         ],
-    )
+    )[perm]
     e_t = utils.normalize(e_t)
 
     e_mu = np.array(
@@ -61,7 +137,7 @@ def compute_system(
             rs * np.cos(mu) * np.cos(theta),
             rs * np.cos(mu) * np.sin(theta),
         ],
-    )
+    )[perm]
     e_mu = utils.normalize(e_mu)
 
     e_theta = np.array(
@@ -70,7 +146,7 @@ def compute_system(
             -rs * np.sin(mu) * np.sin(theta),
             rs * np.sin(mu) * np.cos(theta),
         ],
-    )
+    )[perm]
     e_theta = utils.normalize(e_theta)
 
     f0 = np.sin(al) * e_mu + np.cos(al) * e_theta
@@ -113,6 +189,7 @@ def create_microstructure(
     r_long_epi=0.097,
     alpha_endo: float = -60,
     alpha_epi: float = 60,
+    long_axis: int = 0,
     outdir: str | Path | None = None,
 ):
     endo_marker = markers["ENDO"][0]
@@ -143,6 +220,7 @@ def create_microstructure(
         r_long_epi=r_long_epi,
         alpha_endo=alpha_endo,
         alpha_epi=alpha_epi,
+        long_axis=long_axis,
     )
     if outdir is not None:
         utils.save_microstructure(mesh, system, outdir)
