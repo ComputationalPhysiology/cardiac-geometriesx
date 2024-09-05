@@ -44,6 +44,7 @@ def biv_ellipsoid(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -99,6 +100,8 @@ def biv_ellipsoid(
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
         If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
 
     Returns
     -------
@@ -106,7 +109,6 @@ def biv_ellipsoid(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
-    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
     mesh_name = outdir / "biv_ellipsoid.msh"
     if comm.rank == 0:
@@ -202,17 +204,6 @@ def biv_ellipsoid(
         save_microstructure(
             mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=outdir
         )
-        # from .fibers._biv_ellipsoid import create_biv_fibers
-
-        # create_biv_fibers(
-        #     mesh=geometry.mesh,
-        #     ffun=geometry.marker_functions.ffun,
-        #     markers=geometry.markers,
-        #     fiber_space=fiber_space,
-        #     alpha_endo=fiber_angle_endo,
-        #     alpha_epi=fiber_angle_epi,
-        #     outdir=outdir,
-        # )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
@@ -249,6 +240,7 @@ def biv_ellipsoid_torso(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -316,6 +308,8 @@ def biv_ellipsoid_torso(
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
         If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
 
     Returns
     -------
@@ -323,7 +317,6 @@ def biv_ellipsoid_torso(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
-    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
     mesh_name = outdir / "biv_ellipsoid_torso.msh"
     if comm.rank == 0:
@@ -445,6 +438,7 @@ def lv_ellipsoid(
     fiber_space: str = "P_1",
     aha: bool = True,
     verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create an LV ellipsoidal geometry
 
@@ -482,6 +476,8 @@ def lv_ellipsoid(
         If True create 17-segment AHA regions
     verbose : bool, optional
         If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
 
     Returns
     -------
@@ -489,7 +485,7 @@ def lv_ellipsoid(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
-    comm = MPI.COMM_WORLD
+
     outdir = Path(outdir)
     mesh_name = outdir / "lv_ellipsoid.msh"
     if comm.rank == 0:
@@ -596,6 +592,7 @@ def slab(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create slab geometry
 
@@ -621,6 +618,8 @@ def slab(
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
         If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
 
     Returns
     -------
@@ -628,7 +627,6 @@ def slab(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
-    comm = MPI.COMM_WORLD
     outdir = Path(outdir)
     mesh_name = outdir / "slab.msh"
     if comm.rank == 0:
@@ -698,6 +696,7 @@ def slab_in_bath(
     bz: float = 0.1,
     dx: float = 0.001,
     verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create slab geometry
 
@@ -721,6 +720,8 @@ def slab_in_bath(
         Element size, by default 0.001
     verbose : bool, optional
         If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
 
     Returns
     -------
@@ -728,7 +729,6 @@ def slab_in_bath(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
-    comm = MPI.COMM_WORLD
 
     outdir = Path(outdir)
     mesh_name = outdir / "slab_in_bath.msh"
