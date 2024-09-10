@@ -32,6 +32,7 @@ def test_script(fiber_space, script, tmp_path: Path):
     assert path.is_dir()
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
+
     if fiber_space is not None:
         assert geo.f0 is not None
 

@@ -26,7 +26,6 @@ def save_microstructure(
     # Save for paraview visualization
     if functions[0].function_space.ufl_element().family_name == "quadrature":
         create_xdmf_pointcloud(us=functions, filename=Path(outdir) / "microstructure-viz.xdmf")
-        return
     else:
         try:
             with dolfinx.io.VTXWriter(
