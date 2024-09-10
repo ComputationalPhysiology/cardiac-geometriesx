@@ -457,7 +457,7 @@ def create_xdmf_pointcloud(filename: Path, us: typing.Sequence[dolfinx.fem.Funct
     num_dofs_global = u.function_space.dofmap.index_map.size_global
     num_dofs_local = u.function_space.dofmap.index_map.size_local
     local_range = np.array(u.function_space.dofmap.index_map.local_range, dtype=np.int64)
-    local_range *= u.function_space.dofmap.index_map_bs
+
     # Write XDMF on rank 0
     if comm.rank == 0:
         xdmf = ET.Element("XDMF")
@@ -500,7 +500,8 @@ def create_xdmf_pointcloud(filename: Path, us: typing.Sequence[dolfinx.fem.Funct
     io = adios.DeclareIO("Point cloud writer")
     io.SetEngine("HDF5")
     outfile = io.Open(h5name.as_posix(), adios2.Mode.Write)
-    points_out = points[:num_dofs_local, :].copy()
+    points_out = points[:num_dofs_local, :]
+
     pointvar = io.DefineVariable(
         "Points",
         points_out,
