@@ -19,7 +19,7 @@ class Microstructure(NamedTuple):
 def save_microstructure(
     mesh: dolfinx.mesh.Mesh, functions: Sequence[dolfinx.fem.Function], outdir: str | Path
 ) -> None:
-    from ..utils import element2array, create_xdmf_pointcloud
+    from ..utils import create_xdmf_pointcloud, element2array
 
     if len(functions) == 0:
         return

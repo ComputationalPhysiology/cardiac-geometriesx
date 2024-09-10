@@ -1,17 +1,16 @@
 import tempfile
 import typing
+import xml.etree.ElementTree as ET
 from enum import Enum
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
 from mpi4py import MPI
+
 import basix
 import dolfinx
-import numpy.typing as npt
 import numpy as np
 from structlog import get_logger
-import xml.etree.ElementTree as ET
-
 
 logger = get_logger()
 
@@ -442,7 +441,7 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     return GMshGeometry(mesh, ct, ft, et, vt, markers)
 
 
-def create_xdmf_pointcloud(filename: Path, us: list[dolfinx.fem.Function]) -> None:
+def create_xdmf_pointcloud(filename: Path, us: typing.Sequence[dolfinx.fem.Function]) -> None:
     # Adopted from https://gist.github.com/jorgensd/8bae61ad7a0c211570dff0116a68a356
     if len(us) == 0:
         return
