@@ -147,13 +147,22 @@ class Geometry:
         else:
             markers = {}
 
+        if (folder / "microstructure.json").exists():
+            if comm.rank == 0:
+                microstructure = json.loads((folder / "microstructure.json").read_text())
+            else:
+                microstructure = {}
+            microstructure = comm.bcast(microstructure, root=0)
+        else:
+            microstructure = {}
+
         functions = {}
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
-            function_space = adios4dolfinx.read_attributes(
-                comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
-            )
-            for name, el in function_space.items():
+            # function_space = adios4dolfinx.read_attributes(
+            #     comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
+            # )
+            for name, el in microstructure.items():
                 element = utils.array2element(el)
                 V = dolfinx.fem.functionspace(mesh, element)
                 f = dolfinx.fem.Function(V, name=name)

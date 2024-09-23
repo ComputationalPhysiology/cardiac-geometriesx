@@ -340,6 +340,7 @@ def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
             degree=degree,
             discontinuous=discontinuous,
             shape=(3,),
+            lagrange_variant=basix.LagrangeVariant.unset,
         )
 
 
