@@ -25,6 +25,23 @@ class GMshModel(NamedTuple):
     vertex_tags: dolfinx.mesh.MeshTags
 
 
+def distribute_entity_data(
+    mesh: dolfinx.mesh.Mesh,
+    tdim: int,
+    marked_entities: np.ndarray,
+    entity_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    if dolfinx.__version__ >= "0.9.0":
+        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
+            mesh, tdim, marked_entities, entity_values
+        )
+    else:
+        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
+            mesh._cpp_object, tdim, marked_entities, entity_values
+        )
+    return local_entities, local_values
+
+
 # copied from https://github.com/FEniCS/dolfinx/blob/main/python/dolfinx/io/gmshio.py
 def model_to_mesh(
     model,
@@ -160,9 +177,10 @@ def model_to_mesh(
     )
 
     # Create MeshTags for cells
-    local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-        mesh._cpp_object, mesh.topology.dim, cells, cell_values
+    local_entities, local_values = distribute_entity_data(
+        mesh, mesh.topology.dim, cells, cell_values
     )
+
     mesh.topology.create_connectivity(mesh.topology.dim, 0)
     adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
     ct = dolfinx.mesh.meshtags_from_entities(
@@ -188,11 +206,13 @@ def model_to_mesh(
         gmsh_facet_perm = dolfinx.io.gmshio.cell_perm_array(facet_type, num_facet_nodes)
         marked_facets = marked_facets[:, gmsh_facet_perm]
 
-        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-            mesh._cpp_object, tdim - 1, marked_facets, facet_values
+        local_entities, local_values = distribute_entity_data(
+            mesh, mesh.topology.dim - 1, marked_facets, facet_values
         )
+
         mesh.topology.create_connectivity(topology.dim - 1, tdim)
         adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
+
         ft = dolfinx.io.gmshio.meshtags_from_entities(
             mesh, tdim - 1, adj, local_values.astype(np.int32, copy=False)
         )
@@ -210,8 +230,8 @@ def model_to_mesh(
         gmsh_edge_perm = dolfinx.io.gmshio.cell_perm_array(edge_type, num_edge_nodes)
         marked_edges = marked_edges[:, gmsh_edge_perm]
 
-        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-            mesh._cpp_object, tdim - 2, marked_edges, edge_values
+        local_entities, local_values = distribute_entity_data(
+            mesh, tdim - 2, marked_edges, edge_values
         )
         mesh.topology.create_connectivity(topology.dim - 2, tdim)
         adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
@@ -232,8 +252,8 @@ def model_to_mesh(
         gmsh_vertex_perm = dolfinx.io.gmshio.cell_perm_array(vertex_type, num_vertex_nodes)
         marked_vertices = marked_vertices[:, gmsh_vertex_perm]
 
-        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-            mesh._cpp_object, tdim - 3, marked_vertices, vertex_values
+        local_entities, local_values = distribute_entity_data(
+            mesh, tdim - 3, marked_vertices, vertex_values
         )
         mesh.topology.create_connectivity(topology.dim - 3, tdim)
         adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
