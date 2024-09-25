@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
@@ -47,6 +48,16 @@ def save_microstructure(
         name="function_space",
         attributes=attributes,
     )
+
+    def json_serial(obj):
+        if isinstance(obj, (np.ndarray)):
+            return obj.tolist()
+        raise TypeError("Type %s not serializable" % type(obj))
+
+    if mesh.comm.rank == 0:
+        (Path(outdir) / "microstructure.json").write_text(
+            json.dumps(attributes, indent=4, default=json_serial)
+        )
 
 
 def normalize(u):

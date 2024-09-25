@@ -3,6 +3,7 @@ from mpi4py import MPI
 import basix
 import dolfinx
 import numpy as np
+import pytest
 
 import cardiac_geometries
 import cardiac_geometries.geometry
@@ -48,6 +49,7 @@ def test_save_load_mesh_and_tags(tmp_path):
     assert geo2.ffun is not None
 
 
+@pytest.mark.xfail(reason="Bug in adios2")
 def test_save_load_mesh_and_function(tmp_path):
     comm = MPI.COMM_WORLD
     mesh = dolfinx.mesh.create_unit_cube(comm, 3, 3, 3)
@@ -65,7 +67,7 @@ def test_save_load_mesh_and_function(tmp_path):
     )
     f = dolfinx.fem.Function(V)
     f.interpolate(lambda x: x)
-    geo = cardiac_geometries.geometry.Geometry(mesh=mesh, f0=f)
+    geo = cardiac_geometries.geometry.Geometry(mesh=mesh, f0=f, markers={"ENDO": [1, 2]})
 
     folder = comm.bcast(tmp_path, root=0)
     path = folder / "geo.bp"
