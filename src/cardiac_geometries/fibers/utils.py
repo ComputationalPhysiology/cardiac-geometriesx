@@ -20,13 +20,15 @@ class Microstructure(NamedTuple):
 def save_microstructure(
     mesh: dolfinx.mesh.Mesh, functions: Sequence[dolfinx.fem.Function], outdir: str | Path
 ) -> None:
-    from ..utils import create_xdmf_pointcloud, element2array
+    from ..utils import element2array
 
     if len(functions) == 0:
         return
     # Save for paraview visualization
     if functions[0].function_space.ufl_element().family_name == "quadrature":
-        create_xdmf_pointcloud(us=functions, filename=Path(outdir) / "microstructure-viz.xdmf")
+        from scifem.xdmf import create_pointcloud
+
+        create_pointcloud(functions=functions, filename=Path(outdir) / "microstructure-viz.xdmf")
     else:
         try:
             with dolfinx.io.VTXWriter(

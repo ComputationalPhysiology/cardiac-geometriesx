@@ -22,6 +22,7 @@ dependencies = [
     "cardiac-geometries-core",
     "rich-click",
     "adios4dolfinx",
+    "scifem",
 ]
 
 [project.readme]
