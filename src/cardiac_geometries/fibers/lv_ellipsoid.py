@@ -159,7 +159,10 @@ def compute_system(
     s0 = utils.normalize(s0)
 
     Vv = space_from_string(
-        space_string=f"{element.family_name}_{element.degree}", mesh=mesh, dim=mesh.geometry.dim
+        space_string=f"{element.family_name}_{element.degree}",
+        mesh=mesh,
+        dim=mesh.geometry.dim,
+        discontinuous=element.discontinuous,
     )
 
     fiber = dolfinx.fem.Function(Vv)
