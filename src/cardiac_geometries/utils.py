@@ -270,7 +270,9 @@ def model_to_mesh(
     return GMshModel(mesh, ct, ft, et, vt)
 
 
-def parse_element(space_string: str, mesh: dolfinx.mesh.Mesh, dim: int) -> basix.ufl._ElementBase:
+def parse_element(
+    space_string: str, mesh: dolfinx.mesh.Mesh, dim: int, discontinuous: bool = False
+) -> basix.ufl._ElementBase:
     """
     Parse a string representation of a basix element family
     """
@@ -283,8 +285,9 @@ def parse_element(space_string: str, mesh: dolfinx.mesh.Mesh, dim: int) -> basix
         else:
             kwargs["shape"] = (dim,)
 
+    # breakpoint()
     if family_str in ["Lagrange", "P", "CG"]:
-        el = basix.ufl.element(family=basix.ElementFamily.P, discontinuous=False, **kwargs)
+        el = basix.ufl.element(family=basix.ElementFamily.P, discontinuous=discontinuous, **kwargs)
     elif family_str in ["Discontinuous Lagrange", "DG", "dP"]:
         el = basix.ufl.element(family=basix.ElementFamily.P, discontinuous=True, **kwargs)
 
@@ -298,7 +301,7 @@ def parse_element(space_string: str, mesh: dolfinx.mesh.Mesh, dim: int) -> basix
 
 
 def space_from_string(
-    space_string: str, mesh: dolfinx.mesh.Mesh, dim: int
+    space_string: str, mesh: dolfinx.mesh.Mesh, dim: int, discontinuous: bool = False
 ) -> dolfinx.fem.functionspace:
     """
     Constructed a finite elements space from a string
@@ -313,8 +316,10 @@ def space_from_string(
         The mesh
     dim : int
         1 for scalar space, 3 for vector space.
+    discontinuous: bool
+        If true force element to be discontinuous, by default False
     """
-    el = parse_element(space_string, mesh, dim)
+    el = parse_element(space_string, mesh, dim, discontinuous=discontinuous)
     return dolfinx.fem.functionspace(mesh, el)
 
 
