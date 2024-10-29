@@ -25,6 +25,7 @@ def save_microstructure(
     if len(functions) == 0:
         return
     # Save for paraview visualization
+
     if functions[0].function_space.ufl_element().family_name == "quadrature":
         from scifem.xdmf import create_pointcloud
 
@@ -35,8 +36,8 @@ def save_microstructure(
                 mesh.comm, Path(outdir) / "microstructure-viz.bp", functions, engine="BP4"
             ) as file:
                 file.write(0.0)
-        except RuntimeError:
-            pass
+        except RuntimeError as ex:
+            print(f"Failed to write microstructure: {ex}")
 
     # Save with proper function space
     filename = Path(outdir) / "microstructure.bp"

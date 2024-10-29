@@ -8,6 +8,7 @@ parts:
     chapters:
     - file: demos/lv_ellipsoid.py
     - file: demos/biv_ellipsoid.py
+    - file: demos/slab.py
     - file: docs/gui.md
   - caption: API documentation
     chapters:
