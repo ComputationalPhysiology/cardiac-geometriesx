@@ -8,7 +8,12 @@ from . import utils
 
 
 def mu_theta(
-    x: np.ndarray, y: np.ndarray, z: np.ndarray, long_axis: int = 0
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    rs: np.ndarray,
+    rl: np.ndarray,
+    long_axis: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, list[int]]:
     """Get the angles mu and theta from the coordinates x, y, z
     given the long axis.
@@ -21,6 +26,10 @@ def mu_theta(
         The y-coordinates
     z : np.ndarray
         The z-coordinates
+    rs : np.ndarray
+        The short radius
+    rl : np.ndarray
+        The long radius
     long_axis : int, optional
         The long axis, by default 0 (x-axis)
 
@@ -35,18 +44,18 @@ def mu_theta(
         If the long axis is not 0, 1 or 2
     """
     if long_axis == 0:
-        a = np.sqrt(y**2 + z**2)
-        b = x
+        a = np.sqrt(y**2 + z**2) / rs
+        b = x / rl
         theta = np.pi - np.arctan2(z, -y)
         perm = [0, 1, 2]
     elif long_axis == 1:
-        a = np.sqrt(x**2 + z**2)
-        b = y
+        a = np.sqrt(x**2 + z**2) / rs
+        b = y / rl
         theta = np.pi - np.arctan2(z, -x)
         perm = [1, 0, 2]
     elif long_axis == 2:
-        a = np.sqrt(x**2 + y**2)
-        b = z
+        a = np.sqrt(x**2 + y**2) / rs
+        b = z / rl
         theta = np.pi - np.arctan2(x, -y)
         perm = [2, 1, 0]
     else:
@@ -120,7 +129,7 @@ def compute_system(
     y = dof_coordinates[:, 1]
     z = dof_coordinates[:, 2]
 
-    mu, theta, perm = mu_theta(x, y, z, long_axis=long_axis)
+    mu, theta, perm = mu_theta(x, y, z, rs, rl, long_axis=long_axis)
 
     e_t = np.array(
         [
