@@ -903,10 +903,13 @@ def hello(outdir: Path):
 
     cgc.slab(mesh_name=mesh_name)
     from . import utils
+    from .geometry import Geometry
 
-    comm = (MPI.COMM_WORLD,)
+    comm = MPI.COMM_WORLD
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
     print(geometry)
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    print(geo)
 
 
 app.add_command(lv_ellipsoid)
