@@ -36,7 +36,7 @@ class Geometry:
         if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
             "2.10.2"
         ):
-            # This is broken in adios < 2.10.2 for numpy >= 2.11
+            # This is broken in adios < 2.10.2 and numpy >= 2.11
             adios4dolfinx.write_attributes(
                 comm=self.mesh.comm,
                 filename=path,
@@ -58,13 +58,13 @@ class Geometry:
                 filename=path,
                 meshtag_name="Facet tags",
             )
-        if self.efun is not None:
-            adios4dolfinx.write_meshtags(
-                meshtags=self.efun,
-                mesh=self.mesh,
-                filename=path,
-                meshtag_name="Edge tags",
-            )
+        # if self.efun is not None:
+        #     adios4dolfinx.write_meshtags(
+        #         meshtags=self.efun,
+        #         mesh=self.mesh,
+        #         filename=path,
+        #         meshtag_name="Edge tags",
+        #     )
         # if self.vfun is not None:
         #     adios4dolfinx.write_meshtags(
         #         meshtags=self.vfun,
@@ -73,28 +73,26 @@ class Geometry:
         #         meshtag_name="Vertex tags",
         #     )
 
-        # exit()
-        # if self.f0 is not None:
-        #     el = self.f0.ufl_element()
-        #     arr = utils.element2array(el)
-        #     if Version(np.__version__) <= Version("2.11")
-        # or Version(adios2.__version__) >= Version(
-        #         "2.10.2"
-        #     ):
-        #         # This is broken in adios for numpy >= 2.11
-        #         adios4dolfinx.write_attributes(
-        #             comm=self.mesh.comm,
-        #             filename=path,
-        #             name="function_space",
-        #             attributes={k: arr for k in ("f0", "s0", "n0")},
-        #         )
-        #     adios4dolfinx.write_function(u=self.f0, filename=path, name="f0")
-        # if self.s0 is not None:
-        #     adios4dolfinx.write_function(u=self.s0, filename=path, name="s0")
-        # if self.n0 is not None:
-        #     adios4dolfinx.write_function(u=self.n0, filename=path, name="n0")
+        if self.f0 is not None:
+            el = self.f0.ufl_element()
+            arr = utils.element2array(el)
+            if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
+                "2.10.2"
+            ):
+                # This is broken in adios for numpy >= 2.11
+                adios4dolfinx.write_attributes(
+                    comm=self.mesh.comm,
+                    filename=path,
+                    name="function_space",
+                    attributes={k: arr for k in ("f0", "s0", "n0")},
+                )
+            adios4dolfinx.write_function(u=self.f0, filename=path, name="f0")
+        if self.s0 is not None:
+            adios4dolfinx.write_function(u=self.s0, filename=path, name="s0")
+        if self.n0 is not None:
+            adios4dolfinx.write_function(u=self.n0, filename=path, name="n0")
 
-        # self.mesh.comm.barrier()
+        self.mesh.comm.barrier()
 
     @classmethod
     def from_file(cls, comm: MPI.Intracomm, path: str | Path) -> "Geometry":
