@@ -880,9 +880,28 @@ def gui():
     sp.run(["streamlit", "run", gui_path.as_posix()])
 
 
+@click.command("hello")
+@click.argument(
+    "outdir",
+    required=True,
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+)
+def hello(outdir: Path):
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True)
+    (outdir / "hello.txt").write_text("Hello, World!")
+
+
 app.add_command(lv_ellipsoid)
 app.add_command(biv_ellipsoid)
 app.add_command(biv_ellipsoid_torso)
 app.add_command(slab)
 app.add_command(slab_in_bath)
 app.add_command(gui)
+app.add_command(hello)
