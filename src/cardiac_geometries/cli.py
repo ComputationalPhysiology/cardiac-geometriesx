@@ -896,6 +896,10 @@ def hello(outdir: Path):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
     (outdir / "hello.txt").write_text("Hello, World!")
+    mesh_name = outdir / "slab.msh"
+    import cardiac_geometries_core as cgc
+
+    cgc.slab(mesh_name=mesh_name)
 
 
 app.add_command(lv_ellipsoid)
