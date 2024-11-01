@@ -664,7 +664,6 @@ def slab(
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
-    exit()
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
@@ -683,7 +682,7 @@ def slab(
         )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
-
+    exit()
     return geo
 
 
