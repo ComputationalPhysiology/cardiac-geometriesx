@@ -5,9 +5,11 @@ from pathlib import Path
 
 from mpi4py import MPI
 
+import adios2
 import adios4dolfinx
 import dolfinx
 import numpy as np
+from packaging.version import Version
 
 from . import utils
 
@@ -31,12 +33,16 @@ class Geometry:
         self.mesh.comm.barrier()
         adios4dolfinx.write_mesh(mesh=self.mesh, filename=path)
 
-        adios4dolfinx.write_attributes(
-            comm=self.mesh.comm,
-            filename=path,
-            name="markers",
-            attributes={k: np.array(v, dtype=np.uint8) for k, v in self.markers.items()},
-        )
+        if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
+            "2.10.2"
+        ):
+            # This is broken in adios < 2.10.2 for numpy >= 2.11
+            adios4dolfinx.write_attributes(
+                comm=self.mesh.comm,
+                filename=path,
+                name="markers",
+                attributes={k: np.array(v, dtype=np.uint8) for k, v in self.markers.items()},
+            )
 
         if self.cfun is not None:
             adios4dolfinx.write_meshtags(
@@ -70,13 +76,16 @@ class Geometry:
         if self.f0 is not None:
             el = self.f0.ufl_element()
             arr = utils.element2array(el)
-
-            adios4dolfinx.write_attributes(
-                comm=self.mesh.comm,
-                filename=path,
-                name="function_space",
-                attributes={k: arr for k in ("f0", "s0", "n0")},
-            )
+            if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
+                "2.10.2"
+            ):
+                # This is broken in adios for numpy >= 2.11
+                adios4dolfinx.write_attributes(
+                    comm=self.mesh.comm,
+                    filename=path,
+                    name="function_space",
+                    attributes={k: arr for k in ("f0", "s0", "n0")},
+                )
             adios4dolfinx.write_function(u=self.f0, filename=path, name="f0")
         if self.s0 is not None:
             adios4dolfinx.write_function(u=self.s0, filename=path, name="s0")
