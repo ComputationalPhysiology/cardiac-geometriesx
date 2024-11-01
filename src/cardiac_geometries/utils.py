@@ -10,6 +10,7 @@ from mpi4py import MPI
 import basix
 import dolfinx
 import numpy as np
+from packaging.version import Version
 from structlog import get_logger
 
 logger = get_logger()
@@ -32,7 +33,7 @@ def distribute_entity_data(
     marked_entities: np.ndarray,
     entity_values: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if dolfinx.__version__ >= "0.9.0":
+    if Version(dolfinx.__version__) >= Version("0.9.0"):
         local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
             mesh, tdim, marked_entities, entity_values
         )
