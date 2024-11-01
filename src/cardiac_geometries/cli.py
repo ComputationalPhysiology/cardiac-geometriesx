@@ -779,6 +779,7 @@ def slab(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
     )
+    exit()
     geo.save(outdir / "slab.bp")
 
 

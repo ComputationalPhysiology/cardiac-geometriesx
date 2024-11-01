@@ -682,7 +682,6 @@ def slab(
         )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
-    exit()
     return geo
 
 
