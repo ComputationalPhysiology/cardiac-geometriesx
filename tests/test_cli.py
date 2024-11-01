@@ -13,13 +13,11 @@ from cardiac_geometries import cli
 @pytest.mark.parametrize(
     "script",
     [
-        cli.hello,
-        # cli.slab,
+        cli.slab,
         # cli.lv_ellipsoid,
     ],
     ids=[
-        "hello",
-        # "slab",
+        "slab",
         # "lv_ellipsoid",
     ],
 )

@@ -661,6 +661,7 @@ def slab(
             verbose=verbose,
         )
     comm.barrier()
+    exit()
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
