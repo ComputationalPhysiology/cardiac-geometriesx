@@ -897,9 +897,16 @@ def hello(outdir: Path):
     outdir.mkdir(exist_ok=True)
     (outdir / "hello.txt").write_text("Hello, World!")
     mesh_name = outdir / "slab.msh"
+    from mpi4py import MPI
+
     import cardiac_geometries_core as cgc
 
     cgc.slab(mesh_name=mesh_name)
+    from . import utils
+
+    comm = (MPI.COMM_WORLD,)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    print(geometry)
 
 
 app.add_command(lv_ellipsoid)
