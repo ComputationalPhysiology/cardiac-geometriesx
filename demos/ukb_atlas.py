@@ -90,7 +90,7 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = p.screenshot("facet_tags_ukb.png")
 
-# Now we will generate fiber orientations using fenicsx-ldrb. To do this we first combine all the outflow tracts into one entity, i.e the `BASE`
+# We could also combine all the outflow tracts into one entity, i.e the `BASE`
 
 entities = [
     geometry.ffun.find(1),  # LV
@@ -105,11 +105,11 @@ entities = [
         ]
     ),  # BASE
 ]
-values = [np.full(e.shape, i + 1, dtype=np.int32) for i, e in enumerate(entities)]
+entity_values = [np.full(e.shape, i + 1, dtype=np.int32) for i, e in enumerate(entities)]
 
 # and create new mesh tags
 
-ffun = dolfinx.mesh.meshtags(geometry.mesh, 2, np.hstack(entities), np.hstack(values))
+ffun = dolfinx.mesh.meshtags(geometry.mesh, 2, np.hstack(entities), np.hstack(entity_values))
 
 # and plot the new tags
 
@@ -161,9 +161,9 @@ cg.fibers.utils.save_microstructure(
 )
 
 # Let us also plot the fibers
-
 topology_f0, cell_types_f0, geometry_f0 = dolfinx.plot.vtk_mesh(system.f0.function_space)
-values = system.f0.x.array.real.reshape((geometry_f0.shape[0], len(system.f0)))
+values = np.zeros((geometry.shape[0], 3), dtype=np.float64)
+values[:, : len(system.f0)] = system.f0.x.array.real.reshape((geometry_f0.shape[0], len(system.f0)))
 function_grid = pyvista.UnstructuredGrid(topology_f0, cell_types_f0, geometry_f0)
 function_grid["u"] = values
 glyphs = function_grid.glyph(orient="u", factor=1.0)
