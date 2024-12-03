@@ -46,6 +46,7 @@ docs = [
     "trame-vuetify",
     "ipywidgets",
     "fenicsx-ldrb",
+    "ukb-atlas",
 ]
 test = [
     "pre-commit",
