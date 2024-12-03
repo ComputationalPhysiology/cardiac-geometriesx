@@ -9,7 +9,7 @@ parts:
     - file: demos/lv_ellipsoid.py
     - file: demos/biv_ellipsoid.py
     - file: demos/slab.py
-    - file: demos/ukb.py
+    - file: demos/ukb_atlas.py
     - file: docs/gui.md
   - caption: API documentation
     chapters:
