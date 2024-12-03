@@ -13,6 +13,11 @@ import numpy as np
 from packaging.version import Version
 from structlog import get_logger
 
+try:
+    from dolfinx.graph import adjacencylist
+except ImportError:
+    from dolfinx.graph import AdjacencyList_int32 as adjacencylist
+
 logger = get_logger()
 
 quads = ("Quadrature", "Q", "Quad", "quadrature", "q", "quad")
@@ -184,7 +189,8 @@ def model_to_mesh(
     )
 
     mesh.topology.create_connectivity(mesh.topology.dim, 0)
-    adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
+    # adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
+    adj = adjacencylist(local_entities)
     ct = dolfinx.mesh.meshtags_from_entities(
         mesh, mesh.topology.dim, adj, local_values.astype(np.int32, copy=False)
     )
@@ -213,7 +219,7 @@ def model_to_mesh(
         )
 
         mesh.topology.create_connectivity(topology.dim - 1, tdim)
-        adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
+        adj = adjacencylist(local_entities)
 
         ft = dolfinx.io.gmshio.meshtags_from_entities(
             mesh, tdim - 1, adj, local_values.astype(np.int32, copy=False)
@@ -236,7 +242,7 @@ def model_to_mesh(
             mesh, tdim - 2, marked_edges, edge_values
         )
         mesh.topology.create_connectivity(topology.dim - 2, tdim)
-        adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
+        adj = adjacencylist(local_entities)
         et = dolfinx.io.gmshio.meshtags_from_entities(
             mesh, tdim - 2, adj, local_values.astype(np.int32, copy=False)
         )
@@ -258,7 +264,7 @@ def model_to_mesh(
             mesh, tdim - 3, marked_vertices, vertex_values
         )
         mesh.topology.create_connectivity(topology.dim - 3, tdim)
-        adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
+        adj = adjacencylist(local_entities)
         vt = dolfinx.io.gmshio.meshtags_from_entities(
             mesh, tdim - 3, adj, local_values.astype(np.int32, copy=False)
         )
