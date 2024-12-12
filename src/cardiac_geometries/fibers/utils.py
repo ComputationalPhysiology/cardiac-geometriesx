@@ -7,8 +7,11 @@ import dolfinx
 import numpy as np
 import ufl
 from dolfinx.fem.petsc import LinearProblem
+from packaging.version import Version
 
 from ..utils import space_from_string
+
+_dolfinx_version = Version(dolfinx.__version__)
 
 
 class Microstructure(NamedTuple):
@@ -101,7 +104,12 @@ def laplace(
     if function_space != "P_1":
         W = space_from_string(function_space, mesh, dim=1)
         t = dolfinx.fem.Function(W)
-        expr = dolfinx.fem.Expression(uh, W.element.interpolation_points())
+        if _dolfinx_version >= Version("0.10"):
+            points = W.element.interpolation_points
+        else:
+            W.element.interpolation_points()
+
+        expr = dolfinx.fem.Expression(uh, points)
         t.interpolate(expr)
     else:
         t = uh
