@@ -162,7 +162,7 @@ cg.fibers.utils.save_microstructure(
 
 # Let us also plot the fibers
 topology_f0, cell_types_f0, geometry_f0 = dolfinx.plot.vtk_mesh(system.f0.function_space)
-values = np.zeros((geometry.shape[0], 3), dtype=np.float64)
+values = np.zeros((geometry_f0.shape[0], 3), dtype=np.float64)
 values[:, : len(system.f0)] = system.f0.x.array.real.reshape((geometry_f0.shape[0], len(system.f0)))
 function_grid = pyvista.UnstructuredGrid(topology_f0, cell_types_f0, geometry_f0)
 function_grid["u"] = values
