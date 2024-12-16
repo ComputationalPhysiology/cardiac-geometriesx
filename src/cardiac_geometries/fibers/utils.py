@@ -107,7 +107,7 @@ def laplace(
         if _dolfinx_version >= Version("0.10"):
             points = W.element.interpolation_points
         else:
-            W.element.interpolation_points()
+            points = W.element.interpolation_points()
 
         expr = dolfinx.fem.Expression(uh, points)
         t.interpolate(expr)
