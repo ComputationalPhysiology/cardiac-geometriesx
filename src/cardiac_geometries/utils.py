@@ -10,13 +10,9 @@ from mpi4py import MPI
 import basix
 import dolfinx
 import numpy as np
+from dolfinx.graph import adjacencylist
 from packaging.version import Version
 from structlog import get_logger
-
-try:
-    from dolfinx.graph import adjacencylist
-except ImportError:
-    from dolfinx.graph import AdjacencyList_int32 as adjacencylist
 
 logger = get_logger()
 
@@ -427,30 +423,60 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
 
-    import gmsh
+    if Version(dolfinx.__version__) >= Version("0.10.0"):
+        mesh_data = dolfinx.io.gmshio.read_from_msh(comm=comm, filename=msh_file)
+        mesh = mesh_data.mesh
+        markers_ = mesh_data.physical_groups
+        ct = mesh_data.cell_tags
+        tdim = mesh.topology.dim
+        if ct is None:
+            ct = dolfinx.mesh.meshtags(
+                mesh, tdim, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+            )
 
-    # We could make this work in parallel in the future
+        ft = mesh_data.facet_tags
+        if ft is None:
+            ft = dolfinx.mesh.meshtags(
+                mesh, tdim - 1, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+            )
+        et = mesh_data.edge_tags
+        if et is None:
+            et = dolfinx.mesh.meshtags(
+                mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+            )
+        vt = mesh_data.vertex_tags
+        if vt is None:
+            vt = dolfinx.mesh.meshtags(
+                mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+            )
 
-    if comm.rank == rank:
-        gmsh.initialize()
-        gmsh.model.add("Mesh from file")
-        gmsh.merge(str(msh_file))
-        mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0)
-        markers = {
-            gmsh.model.getPhysicalName(*v): tuple(reversed(v))
-            for v in gmsh.model.getPhysicalGroups()
-        }
-        gmsh.finalize()
+        markers = {k: tuple(reversed(v)) for k, v in markers_.items()}
+
     else:
-        mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0)
-        markers = {}
+        import gmsh
+        # We could make this work in parallel in the future
+
+        if comm.rank == rank:
+            gmsh.initialize()
+            gmsh.model.add("Mesh from file")
+            gmsh.merge(str(msh_file))
+            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0)
+            markers = {
+                gmsh.model.getPhysicalName(*v): tuple(reversed(v))
+                for v in gmsh.model.getPhysicalGroups()
+            }
+            gmsh.finalize()
+        else:
+            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0)
+            markers = {}
+
+        markers = comm.bcast(markers, root=rank)
+
     mesh.name = "Mesh"
     ct.name = "Cell tags"
     ft.name = "Facet tags"
     et.name = "Edge tags"
     vt.name = "Vertex tags"
-
-    markers = comm.bcast(markers, root=rank)
 
     # Save tags to xdmf
     with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "w") as xdmf:
