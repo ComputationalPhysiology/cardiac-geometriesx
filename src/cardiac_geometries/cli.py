@@ -24,6 +24,102 @@ def app():
     pass
 
 
+@click.command(help="Create UK Biobank geometry")
+@click.argument(
+    "outdir",
+    required=True,
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+)
+@click.option(
+    "--mode",
+    default=-1,
+    type=int,
+    help="Mode of the geometry",
+    show_default=True,
+)
+@click.option(
+    "--std",
+    default=1.5,
+    type=float,
+    help="Standard deviation of the geometry",
+    show_default=True,
+)
+@click.option(
+    "--case",
+    default="ED",
+    type=str,
+    help="Case of the geometry",
+    show_default=True,
+)
+@click.option(
+    "--char-length-max",
+    default=2.0,
+    type=float,
+    help="Maximum characteristic length of the mesh",
+    show_default=True,
+)
+@click.option(
+    "--char-length-min",
+    default=2.0,
+    type=float,
+    help="Minimum characteristic length of the mesh",
+    show_default=True,
+)
+@click.option(
+    "--fiber-angle-endo",
+    default=60,
+    type=float,
+    help="Angle for the endocardium",
+    show_default=True,
+)
+@click.option(
+    "--fiber-angle-epi",
+    default=-60,
+    type=float,
+    help="Angle for the epicardium",
+    show_default=True,
+)
+@click.option(
+    "--fiber-space",
+    default="P_1",
+    type=str,
+    help="Function space for fibers of the form family_degree",
+    show_default=True,
+)
+def ukb(
+    outdir: Path | str,
+    mode: int = -1,
+    std: float = 1.5,
+    case: str = "ED",
+    char_length_max: float = 2.0,
+    char_length_min: float = 2.0,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
+    fiber_space: str = "P_1",
+):
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True)
+
+    geo = mesh.ukb(
+        outdir=outdir,
+        mode=mode,
+        std=std,
+        case=case,
+        char_length_max=char_length_max,
+        char_length_min=char_length_min,
+        fiber_angle_endo=fiber_angle_endo,
+        fiber_angle_epi=fiber_angle_epi,
+        fiber_space=fiber_space,
+    )
+    geo.save(outdir / "ukb.bp")
+
+
 @click.command(help="Create LV ellipsoidal geometry")
 @click.argument(
     "outdir",
@@ -382,6 +478,7 @@ def biv_ellipsoid(
     geo = mesh.biv_ellipsoid(
         outdir=outdir,
         char_length=char_length,
+        center_lv_x=center_lv_x,
         center_lv_y=center_lv_y,
         center_lv_z=center_lv_z,
         a_endo_lv=a_endo_lv,
@@ -390,6 +487,7 @@ def biv_ellipsoid(
         a_epi_lv=a_epi_lv,
         b_epi_lv=b_epi_lv,
         c_epi_lv=c_epi_lv,
+        center_rv_x=center_rv_x,
         center_rv_y=center_rv_y,
         center_rv_z=center_rv_z,
         a_endo_rv=a_endo_rv,
@@ -886,3 +984,4 @@ app.add_command(biv_ellipsoid_torso)
 app.add_command(slab)
 app.add_command(slab_in_bath)
 app.add_command(gui)
+app.add_command(ukb)

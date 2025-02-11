@@ -422,6 +422,7 @@ def read_mesh(
 def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
+    outdir.mkdir(parents=True, exist_ok=True)
 
     if Version(dolfinx.__version__) >= Version("0.10.0"):
         mesh_data = dolfinx.io.gmshio.read_from_msh(comm=comm, filename=msh_file)
@@ -454,6 +455,7 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
 
     else:
         import gmsh
+
         # We could make this work in parallel in the future
 
         if comm.rank == rank:
@@ -482,19 +484,27 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "w") as xdmf:
         xdmf.write_mesh(mesh)
         xdmf.write_meshtags(
-            ct, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
+            ct,
+            mesh.geometry,
+            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
         )
         mesh.topology.create_connectivity(2, 3)
         xdmf.write_meshtags(
-            ft, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
+            ft,
+            mesh.geometry,
+            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
         )
         mesh.topology.create_connectivity(1, 3)
         xdmf.write_meshtags(
-            et, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
+            et,
+            mesh.geometry,
+            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
         )
         mesh.topology.create_connectivity(0, 3)
         xdmf.write_meshtags(
-            vt, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
+            vt,
+            mesh.geometry,
+            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
         )
 
     return GMshGeometry(mesh, ct, ft, et, vt, markers)
