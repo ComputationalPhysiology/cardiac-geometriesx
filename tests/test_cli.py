@@ -58,3 +58,31 @@ def test_script_no_fibers(script, tmp_path: Path):
 
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
+
+
+@pytest.mark.parametrize("case", ["ED", "ES"])
+def test_ukb(tmp_path: Path, case: str):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    res = runner.invoke(
+        cli.ukb,
+        [
+            path.as_posix(),
+            "--case",
+            case,
+            "--char-length-max",
+            "10.0",
+            "--char-length-min",
+            "10.0",
+        ],
+    )
+    assert res.exit_code == 0
+    assert path.is_dir()
+
+    assert (path / "mesh.xdmf").exists()
+    assert (path / f"{case}.msh").exists()
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert geo.mesh.geometry.dim == 3

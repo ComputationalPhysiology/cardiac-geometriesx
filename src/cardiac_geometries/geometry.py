@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,8 @@ import numpy as np
 from packaging.version import Version
 
 from . import utils
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass  # (frozen=True, slots=True)
@@ -139,15 +142,17 @@ class Geometry:
     @classmethod
     def from_folder(cls, comm: MPI.Intracomm, folder: str | Path) -> "Geometry":
         folder = Path(folder)
-
+        logger.info(f"Reading geometry from {folder}")
         # Read mesh
         if (folder / "mesh.xdmf").exists():
+            logger.debug("Reading mesh")
             mesh, tags = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
         else:
             raise ValueError("No mesh file found")
 
         # Read markers
         if (folder / "markers.json").exists():
+            logger.debug("Reading markers")
             if comm.rank == 0:
                 markers = json.loads((folder / "markers.json").read_text())
             else:
@@ -168,10 +173,12 @@ class Geometry:
         functions = {}
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
+            logger.debug("Reading microstructure")
             # function_space = adios4dolfinx.read_attributes(
             #     comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
             # )
             for name, el in microstructure.items():
+                logger.debug(f"Reading {name}")
                 element = utils.array2element(el)
                 V = dolfinx.fem.functionspace(mesh, element)
                 f = dolfinx.fem.Function(V, name=name)

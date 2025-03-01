@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import json
 import math
@@ -7,15 +9,143 @@ from pathlib import Path
 from mpi4py import MPI
 
 import cardiac_geometries_core as cgc
+import dolfinx
 from structlog import get_logger
 
 from . import utils
+from .fibers.utils import save_microstructure
 from .geometry import Geometry
 
 meta = metadata("cardiac-geometriesx")
 __version__ = meta["Version"]
 
 logger = get_logger()
+
+
+def ukb(
+    outdir: str | Path,
+    mode: int = -1,
+    std: float = 1.5,
+    case: str = "ED",
+    char_length_max: float = 2.0,
+    char_length_min: float = 2.0,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
+    fiber_space: str = "P_1",
+    comm: MPI.Comm = MPI.COMM_WORLD,
+) -> Geometry:
+    try:
+        import ukb.cli
+    except ImportError as e:
+        msg = (
+            "To create the UKB mesh you need to install the ukb package "
+            "which you can install with pip install ukb-atlas"
+        )
+        raise ImportError(msg) from e
+
+    if comm.rank == 0:
+        print(comm.rank)
+        ukb.cli.main(
+            [
+                str(outdir),
+                "--mode",
+                str(mode),
+                "--std",
+                str(std),
+                "--case",
+                case,
+                "--mesh",
+                "--char_length_max",
+                str(char_length_max),
+                "--char_length_min",
+                str(char_length_min),
+            ]
+        )
+    comm.barrier()
+    outdir = Path(outdir)
+    mesh_name = outdir / f"{case}.msh"
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+
+    if comm.rank == 0:
+        (outdir / "markers.json").write_text(
+            json.dumps(geometry.markers, default=utils.json_serial)
+        )
+        (outdir / "info.json").write_text(
+            json.dumps(
+                {
+                    "mode": mode,
+                    "std": std,
+                    "case": case,
+                    "char_length_max": char_length_max,
+                    "char_length_min": char_length_min,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
+                    "fiber_space": fiber_space,
+                    "cardiac_geometry_version": __version__,
+                    "type": "ukb",
+                    "timestamp": datetime.datetime.now().isoformat(),
+                }
+            )
+        )
+
+    try:
+        import ldrb
+    except ImportError:
+        msg = (
+            "To create fibers you need to install the ldrb package "
+            "which you can install with pip install fenicsx-ldrb"
+        )
+        raise ImportError(msg)
+
+    # base_marker = 3
+    # indices = []
+    # for k in ["PV", "TV", "AV", "MV"]:
+    #     indices.append(geometry.ffun.find(geometry.markers[k][0]))
+    # indices = np.hstack(comm.allreduce(indices, op=MPI.SUM))
+    # values = np.full(len(indices), base_marker, dtype=np.int32)
+
+    markers = {
+        "lv": [geometry.markers["LV"][0]],
+        "rv": [geometry.markers["RV"][0]],
+        "epi": [geometry.markers["EPI"][0]],
+        "base": [
+            geometry.markers["PV"][0],
+            geometry.markers["TV"][0],
+            geometry.markers["AV"][0],
+            geometry.markers["MV"][0],
+        ],
+    }
+    system = ldrb.dolfinx_ldrb(
+        mesh=geometry.mesh,
+        ffun=geometry.ffun,
+        markers=markers,
+        alpha_endo_lv=fiber_angle_endo,
+        alpha_epi_lv=fiber_angle_epi,
+        beta_endo_lv=0,
+        beta_epi_lv=0,
+        fiber_space=fiber_space,
+    )
+
+    save_microstructure(
+        mesh=geometry.mesh,
+        functions=(system.f0, system.s0, system.n0),
+        outdir=outdir,
+    )
+
+    for k, v in system._asdict().items():
+        if v is None:
+            continue
+        if fiber_space.startswith("Q"):
+            # Cannot visualize Quadrature spaces yet
+            continue
+
+        logger.debug(f"Write {k}: {v}")
+        with dolfinx.io.VTXWriter(comm, outdir / f"{k}-viz.bp", [v], engine="BP4") as vtx:
+            vtx.write(0.0)
+
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    return geo
 
 
 def biv_ellipsoid(
@@ -199,10 +329,11 @@ def biv_ellipsoid(
             beta_epi_lv=0,
             fiber_space=fiber_space,
         )
-        from .fibers.utils import save_microstructure
 
         save_microstructure(
-            mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=outdir
+            mesh=geometry.mesh,
+            functions=(system.f0, system.s0, system.n0),
+            outdir=outdir,
         )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
