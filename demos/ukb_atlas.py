@@ -194,6 +194,7 @@ geo = cg.geometry.Geometry.from_folder(comm=comm, folder=outdir)
 # We have also implemented a wrapper around the `ukb-atlas` package that allows you to generate the fibers directly. In this case you can simply de
 
 
+outdir = Path("ukb_mesh2")
 geo = cg.mesh.ukb(
     outdir=outdir,
     comm=comm,
