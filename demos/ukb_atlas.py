@@ -27,7 +27,6 @@ std = 1.5
 
 outdir = Path("ukb_mesh")
 outdir.mkdir(exist_ok=True)
-subdir = outdir / f"mode_{int(mode)}"
 
 # Characteristic length of the mesh (smaller values will give finer meshes)
 char_length = 10.0
@@ -41,8 +40,6 @@ ukb.cli.main(
         str(mode),
         "--std",
         str(std),
-        "--subdir",
-        f"mode_{int(mode)}",
         "--mesh",
         "--char_length_max",
         str(char_length),
@@ -51,7 +48,7 @@ ukb.cli.main(
     ]
 )
 # Choose the ED mesh
-mesh_name = subdir / "ED.msh"
+mesh_name = outdir / "ED.msh"
 # Convert mesh to dolfinx
 comm = MPI.COMM_WORLD
 geometry = cg.utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
@@ -73,13 +70,17 @@ else:
 
 print(geometry.markers)
 if comm.rank == 0:
-    (subdir / "markers.json").write_text(json.dumps(geometry.markers, default=cg.utils.json_serial))
+    (outdir / "markers.json").write_text(
+        json.dumps(geometry.markers, default=cg.utils.json_serial)
+    )
 comm.barrier()
 
 # And plot the facet tags
 
 assert geometry.ffun is not None
-vtk_bmesh = dolfinx.plot.vtk_mesh(geometry.mesh, geometry.ffun.dim, geometry.ffun.indices)
+vtk_bmesh = dolfinx.plot.vtk_mesh(
+    geometry.mesh, geometry.ffun.dim, geometry.ffun.indices
+)
 bgrid = pyvista.UnstructuredGrid(*vtk_bmesh)
 bgrid.cell_data["Facet tags"] = geometry.ffun.values
 bgrid.set_active_scalars("Facet tags")
@@ -105,11 +106,15 @@ entities = [
         ]
     ),  # BASE
 ]
-entity_values = [np.full(e.shape, i + 1, dtype=np.int32) for i, e in enumerate(entities)]
+entity_values = [
+    np.full(e.shape, i + 1, dtype=np.int32) for i, e in enumerate(entities)
+]
 
 # and create new mesh tags
 
-ffun = dolfinx.mesh.meshtags(geometry.mesh, 2, np.hstack(entities), np.hstack(entity_values))
+ffun = dolfinx.mesh.meshtags(
+    geometry.mesh, 2, np.hstack(entities), np.hstack(entity_values)
+)
 
 # and plot the new tags
 
@@ -126,7 +131,7 @@ else:
 
 # Let us also save the markers so that we can inspect them later
 
-with dolfinx.io.XDMFFile(geometry.mesh.comm, subdir / "new_ffun.xdmf", "w") as xdmf:
+with dolfinx.io.XDMFFile(geometry.mesh.comm, outdir / "new_ffun.xdmf", "w") as xdmf:
     xdmf.write_mesh(geometry.mesh)
     xdmf.write_meshtags(ffun, geometry.mesh.geometry)
 
@@ -157,13 +162,17 @@ system = ldrb.dolfinx_ldrb(
 # and save them
 
 cg.fibers.utils.save_microstructure(
-    mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=subdir
+    mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=outdir
 )
 
 # Let us also plot the fibers
-topology_f0, cell_types_f0, geometry_f0 = dolfinx.plot.vtk_mesh(system.f0.function_space)
+topology_f0, cell_types_f0, geometry_f0 = dolfinx.plot.vtk_mesh(
+    system.f0.function_space
+)
 values = np.zeros((geometry_f0.shape[0], 3), dtype=np.float64)
-values[:, : len(system.f0)] = system.f0.x.array.real.reshape((geometry_f0.shape[0], len(system.f0)))
+values[:, : len(system.f0)] = system.f0.x.array.real.reshape(
+    (geometry_f0.shape[0], len(system.f0))
+)
 function_grid = pyvista.UnstructuredGrid(topology_f0, cell_types_f0, geometry_f0)
 function_grid["u"] = values
 glyphs = function_grid.glyph(orient="u", factor=1.0)
@@ -179,4 +188,18 @@ else:
 
 # You should now be able to load the geometry and the fibers using the following code
 
-geo = cg.geometry.Geometry.from_folder(comm=comm, folder=subdir)
+geo = cg.geometry.Geometry.from_folder(comm=comm, folder=outdir)
+
+
+# We have also implemented a wrapper around the `ukb-atlas` package that allows you to generate the fibers directly. In this case you can simply de
+
+
+outdir = Path("ukb_mesh2")
+geo = cg.mesh.ukb(
+    outdir=outdir,
+    comm=comm,
+    char_length_max=2.0,
+    char_length_min=2.0,
+    fiber_angle_endo=60,
+    fiber_angle_epi=-60,
+)
