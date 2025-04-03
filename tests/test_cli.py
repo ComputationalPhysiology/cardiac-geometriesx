@@ -78,6 +78,8 @@ def test_ukb(tmp_path: Path, case: str, clipped: bool):
         "10.0",
     ]
     if clipped:
+        if case == "ES":
+            pytest.skip("Clipped case with default values are for ED")
         args.append("--clipped")
 
     res = runner.invoke(cli.ukb, args)
@@ -85,6 +87,9 @@ def test_ukb(tmp_path: Path, case: str, clipped: bool):
     assert path.is_dir()
 
     assert (path / "mesh.xdmf").exists()
-    assert (path / f"{case}.msh").exists()
+    if clipped:
+        assert (path / f"{case}_clipped.msh").exists()
+    else:
+        assert (path / f"{case}.msh").exists()
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
