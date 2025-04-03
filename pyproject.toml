@@ -52,7 +52,7 @@ test = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ukb-atlas",
+    "ukb-atlas[pyvista]",
     "fenicsx-ldrb",
 ]
 gui = [

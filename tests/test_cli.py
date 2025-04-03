@@ -60,25 +60,27 @@ def test_script_no_fibers(script, tmp_path: Path):
     assert geo.mesh.geometry.dim == 3
 
 
+@pytest.mark.parametrize("clipped", [True, False])
 @pytest.mark.parametrize("case", ["ED", "ES"])
-def test_ukb(tmp_path: Path, case: str):
+def test_ukb(tmp_path: Path, case: str, clipped: bool):
     runner = CliRunner()
 
     comm = MPI.COMM_WORLD
     path = comm.bcast(tmp_path, root=0)
 
-    res = runner.invoke(
-        cli.ukb,
-        [
-            path.as_posix(),
-            "--case",
-            case,
-            "--char-length-max",
-            "10.0",
-            "--char-length-min",
-            "10.0",
-        ],
-    )
+    args = [
+        path.as_posix(),
+        "--case",
+        case,
+        "--char-length-max",
+        "10.0",
+        "--char-length-min",
+        "10.0",
+    ]
+    if clipped:
+        args.append("--clipped")
+
+    res = runner.invoke(cli.ukb, args)
     assert res.exit_code == 0
     assert path.is_dir()
 

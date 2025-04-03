@@ -32,6 +32,7 @@ def ukb(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
+    clipped: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     try:
@@ -44,26 +45,29 @@ def ukb(
         raise ImportError(msg) from e
 
     if comm.rank == 0:
+        ukb.cli.main(["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case])
+        mesh_args = [
+            "mesh",
+            str(outdir),
+            "--case",
+            case,
+            "--char_length_max",
+            str(char_length_max),
+            "--char_length_min",
+            str(char_length_min),
+        ]
+        if clipped:
+            ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
+            mesh_args.append("--clipped")
         print(comm.rank)
-        ukb.cli.main(
-            [
-                str(outdir),
-                "--mode",
-                str(mode),
-                "--std",
-                str(std),
-                "--case",
-                case,
-                "--mesh",
-                "--char_length_max",
-                str(char_length_max),
-                "--char_length_min",
-                str(char_length_min),
-            ]
-        )
+
+        ukb.cli.main(mesh_args)
     comm.barrier()
     outdir = Path(outdir)
-    mesh_name = outdir / f"{case}.msh"
+    if clipped:
+        mesh_name = outdir / f"{case}_clipped.msh"
+    else:
+        mesh_name = outdir / f"{case}.msh"
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
@@ -98,24 +102,25 @@ def ukb(
         )
         raise ImportError(msg)
 
-    # base_marker = 3
-    # indices = []
-    # for k in ["PV", "TV", "AV", "MV"]:
-    #     indices.append(geometry.ffun.find(geometry.markers[k][0]))
-    # indices = np.hstack(comm.allreduce(indices, op=MPI.SUM))
-    # values = np.full(len(indices), base_marker, dtype=np.int32)
-
-    markers = {
-        "lv": [geometry.markers["LV"][0]],
-        "rv": [geometry.markers["RV"][0]],
-        "epi": [geometry.markers["EPI"][0]],
-        "base": [
-            geometry.markers["PV"][0],
-            geometry.markers["TV"][0],
-            geometry.markers["AV"][0],
-            geometry.markers["MV"][0],
-        ],
-    }
+    if clipped:
+        markers = {
+            "lv": [geometry.markers["LV"][0]],
+            "rv": [geometry.markers["RV"][0]],
+            "epi": [geometry.markers["EPI"][0]],
+            "base": [geometry.markers["BASE"][0]],
+        }
+    else:
+        markers = {
+            "lv": [geometry.markers["LV"][0]],
+            "rv": [geometry.markers["RV"][0]],
+            "epi": [geometry.markers["EPI"][0]],
+            "base": [
+                geometry.markers["PV"][0],
+                geometry.markers["TV"][0],
+                geometry.markers["AV"][0],
+                geometry.markers["MV"][0],
+            ],
+        }
     system = ldrb.dolfinx_ldrb(
         mesh=geometry.mesh,
         ffun=geometry.ffun,
