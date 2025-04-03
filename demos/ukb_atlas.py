@@ -28,25 +28,27 @@ std = 1.5
 outdir = Path("ukb_mesh")
 outdir.mkdir(exist_ok=True)
 
-# Characteristic length of the mesh (smaller values will give finer meshes)
+# Characteristic length of the mesh (smaller values will give finer meshes). Let us also pick the case from end-diastole (ED)
 char_length = 10.0
+case = "ED"
+
+# Generate surfaces
+
+ukb.cli.main(["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case])
 
 # Generate mesh
 
-ukb.cli.main(
-    [
-        str(outdir),
-        "--mode",
-        str(mode),
-        "--std",
-        str(std),
-        "--mesh",
-        "--char_length_max",
-        str(char_length),
-        "--char_length_min",
-        str(char_length),
-    ]
-)
+ukb.cli.main([
+    "mesh",
+    str(outdir),
+    "--case",
+    case,
+    "--char_length_max",
+    str(char_length),
+    "--char_length_min",
+    str(char_length),
+])
+
 # Choose the ED mesh
 mesh_name = outdir / "ED.msh"
 # Convert mesh to dolfinx

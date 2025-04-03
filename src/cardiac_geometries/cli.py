@@ -92,6 +92,14 @@ def app():
     help="Function space for fibers of the form family_degree",
     show_default=True,
 )
+@click.option(
+    "--clipped/--no-clipped",
+    default=False,
+    is_flag=True,
+    type=bool,
+    help="If True create clip away the outflow tracts",
+    show_default=True,
+)
 def ukb(
     outdir: Path | str,
     mode: int = -1,
@@ -102,6 +110,7 @@ def ukb(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
+    clipped: bool = False,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -116,6 +125,7 @@ def ukb(
         fiber_angle_endo=fiber_angle_endo,
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
+        clipped=clipped,
     )
     geo.save(outdir / "ukb.bp")
 
