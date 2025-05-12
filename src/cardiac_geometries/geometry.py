@@ -98,7 +98,12 @@ class Geometry:
         self.mesh.comm.barrier()
 
     @classmethod
-    def from_file(cls, comm: MPI.Intracomm, path: str | Path) -> "Geometry":
+    def from_file(
+        cls,
+        comm: MPI.Intracomm,
+        path: str | Path,
+        function_space: dict[str, np.ndarray] | None = None,
+    ) -> "Geometry":
         path = Path(path)
 
         mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
@@ -118,9 +123,11 @@ class Geometry:
                 tags[name] = None
 
         functions = {}
-        function_space = adios4dolfinx.read_attributes(
-            comm=comm, filename=path, name="function_space"
-        )
+        if function_space is None:
+            function_space = adios4dolfinx.read_attributes(
+                comm=comm, filename=path, name="function_space"
+            )
+        assert isinstance(function_space, dict), "function_space must be a dictionary"
         for name, el in function_space.items():
             element = utils.array2element(el)
             V = dolfinx.fem.functionspace(mesh, element)
