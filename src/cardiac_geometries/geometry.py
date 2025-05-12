@@ -102,7 +102,7 @@ class Geometry:
         cls,
         comm: MPI.Intracomm,
         path: str | Path,
-        function_space: dict[str, np.ndarray] | None = None,
+        function_space_data: dict[str, np.ndarray] | None = None,
     ) -> "Geometry":
         path = Path(path)
 
@@ -123,12 +123,12 @@ class Geometry:
                 tags[name] = None
 
         functions = {}
-        if function_space is None:
-            function_space = adios4dolfinx.read_attributes(
+        if function_space_data is None:
+            function_space_data = adios4dolfinx.read_attributes(
                 comm=comm, filename=path, name="function_space"
             )
-        assert isinstance(function_space, dict), "function_space must be a dictionary"
-        for name, el in function_space.items():
+        assert isinstance(function_space_data, dict), "function_space_data must be a dictionary"
+        for name, el in function_space_data.items():
             element = utils.array2element(el)
             V = dolfinx.fem.functionspace(mesh, element)
             f = dolfinx.fem.Function(V, name=name)
