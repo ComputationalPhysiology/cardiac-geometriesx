@@ -209,7 +209,6 @@ def ukb(
     "--create-fibers",
     default=False,
     is_flag=True,
-    type=bool,
     help="If True create analytic fibers",
     show_default=True,
 )
@@ -431,7 +430,6 @@ def lv_ellipsoid(
     "--create-fibers",
     default=False,
     is_flag=True,
-    type=bool,
     help="If True create analytic fibers",
     show_default=True,
 )
@@ -699,7 +697,6 @@ def biv_ellipsoid(
     "--create-fibers",
     default=False,
     is_flag=True,
-    type=bool,
     help="If True create analytic fibers",
     show_default=True,
 )
@@ -837,7 +834,6 @@ def biv_ellipsoid_torso(
     "--create-fibers",
     default=False,
     is_flag=True,
-    type=bool,
     help="If True create analytic fibers",
     show_default=True,
 )
