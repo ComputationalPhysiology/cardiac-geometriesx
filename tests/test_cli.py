@@ -13,8 +13,9 @@ from cardiac_geometries import Geometry, cli
     [
         cli.slab,
         cli.lv_ellipsoid,
+        cli.cylinder,
     ],
-    ids=["slab", "lv_ellipsoid"],
+    ids=["slab", "lv_ellipsoid", "cylinder"],
 )
 @pytest.mark.parametrize("fiber_space", [None, "P_1", "P_2", "Quadrature_2", "DG_1"])
 def test_script(fiber_space, script, tmp_path: Path):

@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
@@ -32,20 +33,25 @@ def save_microstructure(
     if functions[0].function_space.ufl_element().family_name == "quadrature":
         from scifem.xdmf import XDMFFile
 
-        with XDMFFile(Path(outdir) / "microstructure-viz.xdmf", functions) as xdmf:
+        fname = Path(outdir) / "microstructure-viz.xdmf"
+        fname.unlink(missing_ok=True)
+        fname.with_suffix(".h5").unlink(missing_ok=True)
+        with XDMFFile(fname, functions) as xdmf:
             xdmf.write(0.0)
 
     else:
+        fname = Path(outdir) / "microstructure-viz.bp"
+        shutil.rmtree(fname, ignore_errors=True)
         try:
-            with dolfinx.io.VTXWriter(
-                mesh.comm, Path(outdir) / "microstructure-viz.bp", functions, engine="BP4"
-            ) as file:
+            with dolfinx.io.VTXWriter(mesh.comm, fname, functions, engine="BP4") as file:
                 file.write(0.0)
         except RuntimeError as ex:
             print(f"Failed to write microstructure: {ex}")
 
     # Save with proper function space
+
     filename = Path(outdir) / "microstructure.bp"
+    shutil.rmtree(filename, ignore_errors=True)
     for function in functions:
         adios4dolfinx.write_function(u=function, filename=filename)
 
