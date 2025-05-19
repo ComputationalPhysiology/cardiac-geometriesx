@@ -440,12 +440,19 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
             ft = dolfinx.mesh.meshtags(
                 mesh, tdim - 1, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
             )
-        et = mesh_data.edge_tags
+
+        if hasattr(mesh_data, "edge_tags"):
+            et = mesh_data.edge_tags
+        else:
+            et = mesh_data.ridge_tags
         if et is None:
             et = dolfinx.mesh.meshtags(
                 mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
             )
-        vt = mesh_data.vertex_tags
+        if hasattr(mesh_data, "vertex_tags"):
+            vt = mesh_data.vertex_tags
+        else:
+            vt = mesh_data.peak_tags
         if vt is None:
             vt = dolfinx.mesh.meshtags(
                 mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
