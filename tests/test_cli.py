@@ -21,6 +21,8 @@ try:
 except ImportError:
     HAS_UKB = False
 
+MPI_SIZE = MPI.COMM_WORLD.size
+
 
 @pytest.mark.parametrize(
     "script",
@@ -96,6 +98,7 @@ def test_script_no_fibers(script, tmp_path: Path):
 @pytest.mark.parametrize("clipped", [True, False])
 @pytest.mark.parametrize("case", ["ED", "ES"])
 @pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
+@pytest.mark.skipif(MPI.COMM_WORLD.size > 1, reason="Pyvista operations is not parallelized yet")
 def test_ukb(tmp_path: Path, case: str, clipped: bool):
     runner = CliRunner()
 
