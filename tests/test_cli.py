@@ -7,6 +7,20 @@ from click.testing import CliRunner
 
 from cardiac_geometries import Geometry, cli
 
+try:
+    import ldrb  # noqa: F401
+
+    HAS_LDRB = True
+except ImportError:
+    HAS_LDRB = False
+
+try:
+    import ukb.cli  # noqa: F401
+
+    HAS_UKB = True
+except ImportError:
+    HAS_UKB = False
+
 
 @pytest.mark.parametrize(
     "script",
@@ -38,6 +52,23 @@ def test_script(fiber_space, script, tmp_path: Path):
         assert geo.f0 is not None
 
 
+@pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
+def test_biv_fibers(tmp_path: Path):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    res = runner.invoke(
+        cli.biv_ellipsoid, [path.as_posix()], "--create-fibers", "--fiber-space", "P_1"
+    )
+    assert res.exit_code == 0
+    assert path.is_dir()
+
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert geo.mesh.geometry.dim == 3
+
+
 @pytest.mark.parametrize(
     "script",
     [
@@ -63,6 +94,7 @@ def test_script_no_fibers(script, tmp_path: Path):
 
 @pytest.mark.parametrize("clipped", [True, False])
 @pytest.mark.parametrize("case", ["ED", "ES"])
+@pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
 def test_ukb(tmp_path: Path, case: str, clipped: bool):
     runner = CliRunner()
 
