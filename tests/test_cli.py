@@ -60,7 +60,8 @@ def test_biv_fibers(tmp_path: Path):
     path = comm.bcast(tmp_path, root=0)
 
     res = runner.invoke(
-        cli.biv_ellipsoid, [path.as_posix()], "--create-fibers", "--fiber-space", "P_1"
+        cli.biv_ellipsoid,
+        [path.as_posix(), "--create-fibers", "--fiber-space", "P_1"],
     )
     assert res.exit_code == 0
     assert path.is_dir()
