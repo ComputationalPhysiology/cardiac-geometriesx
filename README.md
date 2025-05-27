@@ -26,7 +26,11 @@ To install the package you can use `pip`
 ```
 python3 -m pip install cardiac-geometriesx
 ```
-however, this assumes that you already have `dolfinx` pre-installed. You can also use the provided docker image e.g
+however, this assumes that you already have `dolfinx` pre-installed. You can also use `conda`
+```
+conda install -c conda-forge cardiac-geometriesx
+```
+or the provided docker image
 ```
 docker pull ghcr.io/computationalphysiology/cardiac-geometriesx:latest
 ```
