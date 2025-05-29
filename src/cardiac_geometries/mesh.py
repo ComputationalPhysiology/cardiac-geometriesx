@@ -22,19 +22,80 @@ __version__ = meta["Version"]
 logger = get_logger()
 
 
+def transform_markers(
+    markers: dict[str, tuple[int, int]], clipped: bool = False
+) -> dict[str, list[int]]:
+    if clipped:
+        return {
+            "lv": [markers["LV"][0]],
+            "rv": [markers["RV"][0]],
+            "epi": [markers["EPI"][0]],
+            "base": [markers["BASE"][0]],
+        }
+    else:
+        return {
+            "lv": [markers["LV"][0]],
+            "rv": [markers["RV"][0]],
+            "epi": [markers["EPI"][0]],
+            "base": [
+                markers["PV"][0],
+                markers["TV"][0],
+                markers["AV"][0],
+                markers["MV"][0],
+            ],
+        }
+
+
 def ukb(
     outdir: str | Path,
     mode: int = -1,
     std: float = 1.5,
     case: str = "ED",
-    char_length_max: float = 2.0,
-    char_length_min: float = 2.0,
+    char_length_max: float = 5.0,
+    char_length_min: float = 5.0,
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
+    create_fibers: bool = True,
     fiber_space: str = "P_1",
     clipped: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
+    """Create a mesh from the UK-Biobank atlas using
+    the ukb-atlas package.
+
+    Parameters
+    ----------
+    outdir : str | Path
+        Directory where to save the results.
+    mode : int, optional
+        Mode for the UKB mesh, by default -1
+    std : float, optional
+        Standard deviation for the UKB mesh, by default 1.5
+    case : str, optional
+        Case for the UKB mesh (either "ED" or "ES"), by default "ED"
+    char_length_max : float, optional
+        Maximum characteristic length of the mesh, by default 2.0
+    char_length_min : float, optional
+        Minimum characteristic length of the mesh, by default 2.0
+    fiber_angle_endo : float, optional
+        Fiber angle for the endocardium, by default 60
+    fiber_angle_epi : float, optional
+        Fiber angle for the epicardium, by default -60
+    create_fibers : bool, optional
+        If True create rule-based fibers, by default True
+    fiber_space : str, optional
+        Function space for fibers of the form family_degree, by default "P_1"
+    clipped : bool, optional
+        If True create a clipped mesh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
+
+    Returns
+    -------
+    Geometry
+        A Geometry with the mesh, markers, markers functions and fibers.
+
+    """
     try:
         import ukb.cli
     except ImportError as e:
@@ -87,67 +148,51 @@ def ukb(
                     "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
                     "cardiac_geometry_version": __version__,
-                    "type": "ukb",
+                    "mesh_type": "ukb",
+                    "clipped": clipped,
                     "timestamp": datetime.datetime.now().isoformat(),
                 }
             )
         )
 
-    try:
-        import ldrb
-    except ImportError:
-        msg = (
-            "To create fibers you need to install the ldrb package "
-            "which you can install with pip install fenicsx-ldrb"
+    if create_fibers:
+        try:
+            import ldrb
+        except ImportError as ex:
+            msg = (
+                "To create fibers you need to install the ldrb package "
+                "which you can install with pip install fenicsx-ldrb"
+            )
+            raise ImportError(msg) from ex
+
+        markers = transform_markers(geometry.markers)
+        system = ldrb.dolfinx_ldrb(
+            mesh=geometry.mesh,
+            ffun=geometry.ffun,
+            markers=markers,
+            alpha_endo_lv=fiber_angle_endo,
+            alpha_epi_lv=fiber_angle_epi,
+            beta_endo_lv=0,
+            beta_epi_lv=0,
+            fiber_space=fiber_space,
         )
-        raise ImportError(msg)
 
-    if clipped:
-        markers = {
-            "lv": [geometry.markers["LV"][0]],
-            "rv": [geometry.markers["RV"][0]],
-            "epi": [geometry.markers["EPI"][0]],
-            "base": [geometry.markers["BASE"][0]],
-        }
-    else:
-        markers = {
-            "lv": [geometry.markers["LV"][0]],
-            "rv": [geometry.markers["RV"][0]],
-            "epi": [geometry.markers["EPI"][0]],
-            "base": [
-                geometry.markers["PV"][0],
-                geometry.markers["TV"][0],
-                geometry.markers["AV"][0],
-                geometry.markers["MV"][0],
-            ],
-        }
-    system = ldrb.dolfinx_ldrb(
-        mesh=geometry.mesh,
-        ffun=geometry.ffun,
-        markers=markers,
-        alpha_endo_lv=fiber_angle_endo,
-        alpha_epi_lv=fiber_angle_epi,
-        beta_endo_lv=0,
-        beta_epi_lv=0,
-        fiber_space=fiber_space,
-    )
+        save_microstructure(
+            mesh=geometry.mesh,
+            functions=(system.f0, system.s0, system.n0),
+            outdir=outdir,
+        )
 
-    save_microstructure(
-        mesh=geometry.mesh,
-        functions=(system.f0, system.s0, system.n0),
-        outdir=outdir,
-    )
+        for k, v in system._asdict().items():
+            if v is None:
+                continue
+            if fiber_space.startswith("Q"):
+                # Cannot visualize Quadrature spaces yet
+                continue
 
-    for k, v in system._asdict().items():
-        if v is None:
-            continue
-        if fiber_space.startswith("Q"):
-            # Cannot visualize Quadrature spaces yet
-            continue
-
-        logger.debug(f"Write {k}: {v}")
-        with dolfinx.io.VTXWriter(comm, outdir / f"{k}-viz.bp", [v], engine="BP4") as vtx:
-            vtx.write(0.0)
+            logger.debug(f"Write {k}: {v}")
+            with dolfinx.io.VTXWriter(comm, outdir / f"{k}-viz.bp", [v], engine="BP4") as vtx:
+                vtx.write(0.0)
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
@@ -272,10 +317,10 @@ def biv_ellipsoid(
                     "b_epi_rv": b_epi_rv,
                     "c_epi_rv": c_epi_rv,
                     "create_fibers": create_fibers,
-                    "fibers_angle_endo": fiber_angle_endo,
-                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
-                    # "mesh_type": MeshTypes.biv_ellipsoid.value,
+                    "mesh_type": "biv_ellipsoid",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
                 },
@@ -486,10 +531,10 @@ def biv_ellipsoid_torso(
                     "b_epi_rv": b_epi_rv,
                     "c_epi_rv": c_epi_rv,
                     "create_fibers": create_fibers,
-                    "fibers_angle_endo": fiber_angle_endo,
-                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
-                    # "mesh_type": MeshTypes.biv_ellipsoid.value,
+                    "mesh_type": "biv",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
                 },
@@ -640,11 +685,11 @@ def lv_ellipsoid(
                     "mu_apex_epi": mu_apex_epi,
                     "mu_base_epi": mu_base_epi,
                     "create_fibers": create_fibers,
-                    "fibers_angle_endo": fiber_angle_endo,
-                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
                     "aha": aha,
-                    # "mesh_type": MeshTypes.lv_ellipsoid.value,
+                    "mesh_type": "lv_ellipsoid",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
                 },
@@ -771,15 +816,15 @@ def slab(
         with open(outdir / "info.json", "w") as f:
             json.dump(
                 {
-                    "lx": lx,
-                    "ly": ly,
-                    "lz": lz,
+                    "Lx": lx,
+                    "Ly": ly,
+                    "Lz": lz,
                     "dx": dx,
                     "create_fibers": create_fibers,
-                    "fibers_angle_endo": fiber_angle_endo,
-                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
-                    # "mesh_type": MeshTypes.slab.value,
+                    "mesh_type": "slab",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
                 },
@@ -880,7 +925,7 @@ def slab_in_bath(
                     "by": by,
                     "bz": bz,
                     "dx": dx,
-                    # "mesh_type": MeshTypes.slab.value,
+                    "mesh_type": "slab-bath",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
                 },
@@ -975,11 +1020,11 @@ def cylinder(
                     "height": height,
                     "char_length": char_length,
                     "create_fibers": create_fibers,
-                    "fibers_angle_endo": fiber_angle_endo,
-                    "fibers_angle_epi": fiber_angle_epi,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
                     "aha": aha,
-                    # "mesh_type": MeshTypes.lv_ellipsoid.value,
+                    "mesh_type": "cylinder",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
                 },

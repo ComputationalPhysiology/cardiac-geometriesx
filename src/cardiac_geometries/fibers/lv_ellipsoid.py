@@ -203,6 +203,7 @@ def create_microstructure(
     alpha_epi: float = 60,
     long_axis: int = 0,
     outdir: str | Path | None = None,
+    **kwargs,
 ):
     endo_marker = markers["ENDO"][0]
     epi_marker = markers["EPI"][0]

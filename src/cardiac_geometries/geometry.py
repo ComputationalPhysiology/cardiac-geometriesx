@@ -3,6 +3,7 @@ import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from mpi4py import MPI
 
@@ -10,6 +11,7 @@ import adios2
 import adios4dolfinx
 import dolfinx
 import numpy as np
+import ufl
 from packaging.version import Version
 
 from . import utils
@@ -17,7 +19,7 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-@dataclass  # (frozen=True, slots=True)
+@dataclass
 class Geometry:
     mesh: dolfinx.mesh.Mesh
     markers: dict[str, tuple[int, int]] = field(default_factory=dict)
@@ -28,6 +30,7 @@ class Geometry:
     f0: dolfinx.fem.Function | None = None
     s0: dolfinx.fem.Function | None = None
     n0: dolfinx.fem.Function | None = None
+    info: dict[str, Any] = field(default_factory=dict)
 
     def save(self, path: str | Path) -> None:
         path = Path(path)
@@ -96,6 +99,89 @@ class Geometry:
             adios4dolfinx.write_function(u=self.n0, filename=path, name="n0")
 
         self.mesh.comm.barrier()
+
+    @property
+    def dx(self):
+        return ufl.Measure("dx", domain=self.mesh, subdomain_data=self.cfun)
+
+    @property
+    def ds(self):
+        return ufl.Measure("ds", domain=self.mesh, subdomain_data=self.ffun)
+
+    @property
+    def facet_normal(self) -> ufl.FacetNormal:
+        return ufl.FacetNormal(self.mesh)
+
+    def refine(self, n=1, outdir: Path | None = None) -> "Geometry":
+        mesh = self.mesh
+        cfun = self.cfun
+        ffun = self.ffun
+
+        for _ in range(n):
+            new_mesh, parent_cell, parent_facet = dolfinx.mesh.refine(
+                mesh,
+                partitioner=None,
+                option=dolfinx.mesh.RefinementOption.parent_cell_and_facet,
+            )
+            new_mesh.name = mesh.name
+            mesh = new_mesh
+            new_mesh.topology.create_entities(1)
+            new_mesh.topology.create_connectivity(2, 3)
+            if cfun is not None:
+                new_cfun = dolfinx.mesh.transfer_meshtag(cfun, new_mesh, parent_cell, parent_facet)
+                new_cfun.name = cfun.name
+                cfun = new_cfun
+            else:
+                new_cfun = None
+            if ffun is not None:
+                new_ffun = dolfinx.mesh.transfer_meshtag(ffun, new_mesh, parent_cell, parent_facet)
+                new_ffun.name = ffun.name
+                ffun = new_ffun
+            else:
+                new_ffun = None
+
+        if outdir is not None:
+            outdir = Path(outdir)
+            outdir.mkdir(parents=True, exist_ok=True)
+            with dolfinx.io.XDMFFile(new_mesh.comm, outdir / "mesh.xdmf", "w") as xdmf:
+                xdmf.write_mesh(new_mesh)
+                xdmf.write_meshtags(
+                    cfun,
+                    new_mesh.geometry,
+                    geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{new_mesh.name}']/Geometry",
+                )
+                mesh.topology.create_connectivity(2, 3)
+                xdmf.write_meshtags(
+                    ffun,
+                    new_mesh.geometry,
+                    geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{new_mesh.name}']/Geometry",
+                )
+
+        if self.info is not None:
+            info = self.info.copy()
+            info["refinement"] = n
+            info.pop("outdir", None)
+            if outdir is not None:
+                info["outdir"] = str(outdir)
+            from .fibers import generate_fibers
+
+            f0, s0, n0 = generate_fibers(mesh=new_mesh, ffun=new_ffun, markers=self.markers, **info)
+        else:
+            info = None
+            # Interpolate fibers
+            raise NotImplementedError(
+                "Interpolating fibers after refinement is not implemented yet."
+            )
+
+        return Geometry(
+            mesh=new_mesh,
+            markers=self.markers,
+            cfun=new_cfun,
+            ffun=new_ffun,
+            f0=f0,
+            s0=s0,
+            n0=n0,
+        )
 
     @classmethod
     def from_file(
@@ -196,9 +282,20 @@ class Geometry:
                 else:
                     functions[name] = f
 
+        if (folder / "info.json").exists():
+            logger.debug("Reading info")
+            if comm.rank == 0:
+                info = json.loads((folder / "info.json").read_text())
+            else:
+                info = {}
+            info = comm.bcast(info, root=0)
+        else:
+            info = {}
+
         return cls(
             mesh=mesh,
             markers=markers,
+            info=info,
             **functions,
             **tags,
         )
