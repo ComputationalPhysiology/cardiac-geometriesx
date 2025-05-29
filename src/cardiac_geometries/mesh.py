@@ -10,6 +10,7 @@ from mpi4py import MPI
 
 import cardiac_geometries_core as cgc
 import dolfinx
+import numpy as np
 from structlog import get_logger
 
 from . import utils
@@ -762,6 +763,70 @@ def lv_ellipsoid(
     return geo
 
 
+def slab_dolfinx(
+    comm, outdir: Path, lx: float = 20.0, ly: float = 7.0, lz: float = 3.0, dx: float = 1.0
+) -> utils.GMshGeometry:
+    mesh = dolfinx.mesh.create_box(
+        comm,
+        [[0.0, 0.0, 0.0], [lx, ly, lz]],
+        [int(lx / dx), int(ly / dx), int(lz / dx)],
+        dolfinx.mesh.CellType.tetrahedron,
+        ghost_mode=dolfinx.mesh.GhostMode.none,
+    )
+    mesh.name = "Mesh"
+    fdim = mesh.topology.dim - 1
+    x0_facets = dolfinx.mesh.locate_entities_boundary(mesh, fdim, lambda x: np.isclose(x[0], 0))
+    x1_facets = dolfinx.mesh.locate_entities_boundary(mesh, fdim, lambda x: np.isclose(x[0], lx))
+    y0_facets = dolfinx.mesh.locate_entities_boundary(mesh, fdim, lambda x: np.isclose(x[1], 0))
+    y1_facets = dolfinx.mesh.locate_entities_boundary(mesh, fdim, lambda x: np.isclose(x[1], ly))
+    z0_facets = dolfinx.mesh.locate_entities_boundary(mesh, fdim, lambda x: np.isclose(x[2], 0))
+    z1_facets = dolfinx.mesh.locate_entities_boundary(mesh, fdim, lambda x: np.isclose(x[2], lz))
+
+    # Concatenate and sort the arrays based on facet indices.
+    # Left facets marked with 1, right facets with two
+    marked_facets = np.hstack([x0_facets, x1_facets, y0_facets, y1_facets, z0_facets, z1_facets])
+
+    marked_values = np.hstack(
+        [
+            np.full_like(x0_facets, 1),
+            np.full_like(x1_facets, 2),
+            np.full_like(y0_facets, 3),
+            np.full_like(y1_facets, 4),
+            np.full_like(z0_facets, 5),
+            np.full_like(z1_facets, 6),
+        ],
+    )
+    sorted_facets = np.argsort(marked_facets)
+    ft = dolfinx.mesh.meshtags(
+        mesh,
+        fdim,
+        marked_facets[sorted_facets],
+        marked_values[sorted_facets],
+    )
+    ft.name = "Facet tags"
+    markers = {
+        "X0": (1, 2),
+        "X1": (2, 2),
+        "Y0": (3, 2),
+        "Y1": (4, 2),
+        "Z0": (5, 2),
+        "Z1": (6, 2),
+    }
+
+    with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "w") as xdmf:
+        xdmf.write_mesh(mesh)
+        xdmf.write_meshtags(ft, mesh.geometry)
+
+    return utils.GMshGeometry(
+        mesh=mesh,
+        markers=markers,
+        cfun=None,
+        ffun=ft.indices,
+        efun=None,
+        vfun=None,
+    )
+
+
 def slab(
     outdir: Path | str,
     lx: float = 20.0,
@@ -773,6 +838,7 @@ def slab(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    use_dolfinx: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create slab geometry
@@ -799,6 +865,8 @@ def slab(
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
         If True print information from gmsh, by default False
+    use_dolfinx : bool, optional
+        If True use dolfinx to create the mesh, by default False (gmsh)
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
 
@@ -833,17 +901,29 @@ def slab(
                 default=utils.json_serial,
             )
 
-        cgc.slab(
-            mesh_name=mesh_name.as_posix(),
+        if not use_dolfinx:
+            cgc.slab(
+                mesh_name=mesh_name.as_posix(),
+                lx=lx,
+                ly=ly,
+                lz=lz,
+                dx=dx,
+                verbose=verbose,
+            )
+    comm.barrier()
+
+    if use_dolfinx:
+        geometry = slab_dolfinx(
+            comm=comm,
+            outdir=outdir,
             lx=lx,
             ly=ly,
             lz=lz,
             dx=dx,
-            verbose=verbose,
         )
-    comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    else:
+        geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
