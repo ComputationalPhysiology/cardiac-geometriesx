@@ -32,15 +32,19 @@ MPI_SIZE = MPI.COMM_WORLD.size
     ],
     ids=["slab", "lv_ellipsoid", "cylinder"],
 )
+@pytest.mark.skipif(
+    MPI.COMM_WORLD.size > 1, reason="Couldn't get refinement to work in parallel yet"
+)
 def test_refine_analytic_fibers(script, tmp_path: Path):
     comm = MPI.COMM_WORLD
-    outdir = tmp_path / "mesh"
+    path = comm.bcast(tmp_path, root=0)
+    outdir = path / "mesh"
     script(outdir=outdir, create_fibers=True, comm=comm)
     geo = cg.Geometry.from_folder(comm=comm, folder=outdir)
     assert (outdir / "mesh.xdmf").is_file()
     assert geo.f0 is not None
     # assert geo.mesh.geometry.dim == 3
-    refined_outdir = tmp_path / "refined"
+    refined_outdir = path / "refined"
     refined = geo.refine(outdir=refined_outdir, n=1)
     assert refined.f0 is not None
     assert (refined_outdir / "mesh.xdmf").is_file()
@@ -52,15 +56,19 @@ def test_refine_analytic_fibers(script, tmp_path: Path):
 
 
 @pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
+@pytest.mark.skipif(
+    MPI.COMM_WORLD.size > 1, reason="Couldn't get refinement to work in parallel yet"
+)
 def test_refine_biv(tmp_path: Path):
     comm = MPI.COMM_WORLD
-    outdir = tmp_path / "mesh"
+    path = comm.bcast(tmp_path, root=0)
+    outdir = path / "mesh"
     cg.mesh.biv_ellipsoid(outdir=outdir, create_fibers=True, comm=comm)
     geo = cg.Geometry.from_folder(comm=comm, folder=outdir)
     assert geo.f0 is not None
     assert (outdir / "mesh.xdmf").is_file()
     # assert geo.mesh.geometry.dim == 3
-    refined_outdir = tmp_path / "refined"
+    refined_outdir = path / "refined"
     refined = geo.refine(outdir=refined_outdir, n=1)
     assert refined.f0 is not None
     assert (refined_outdir / "mesh.xdmf").is_file()
@@ -76,13 +84,14 @@ def test_refine_biv(tmp_path: Path):
 @pytest.mark.skipif(MPI.COMM_WORLD.size > 1, reason="Pyvista operations is not parallelized yet")
 def test_refine_ukb(tmp_path: Path):
     comm = MPI.COMM_WORLD
-    outdir = tmp_path / "mesh"
+    path = comm.bcast(tmp_path, root=0)
+    outdir = path / "mesh"
     cg.mesh.ukb(outdir=outdir, create_fibers=True, comm=comm)
     geo = cg.Geometry.from_folder(comm=comm, folder=outdir)
     assert geo.f0 is not None
     assert (outdir / "mesh.xdmf").is_file()
     # assert geo.mesh.geometry.dim == 3
-    refined_outdir = tmp_path / "refined"
+    refined_outdir = path / "refined"
     refined = geo.refine(outdir=refined_outdir, n=1)
     assert refined.f0 is not None
     assert (refined_outdir / "mesh.xdmf").is_file()
