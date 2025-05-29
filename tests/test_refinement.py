@@ -32,7 +32,7 @@ MPI_SIZE = MPI.COMM_WORLD.size
     ],
     ids=["slab", "lv_ellipsoid", "cylinder"],
 )
-def test_refine_analytic(script, tmp_path: Path):
+def test_refine_analytic_fibers(script, tmp_path: Path):
     comm = MPI.COMM_WORLD
     outdir = tmp_path / "mesh"
     script(outdir=outdir, create_fibers=True, comm=comm)
