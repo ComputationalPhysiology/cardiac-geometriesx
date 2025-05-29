@@ -93,7 +93,7 @@ def ukb(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
