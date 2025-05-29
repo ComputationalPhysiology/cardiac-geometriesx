@@ -166,7 +166,7 @@ def ukb(
             )
             raise ImportError(msg) from ex
 
-        markers = transform_markers(geometry.markers)
+        markers = transform_markers(geometry.markers, clipped=clipped)
         system = ldrb.dolfinx_ldrb(
             mesh=geometry.mesh,
             ffun=geometry.ffun,
