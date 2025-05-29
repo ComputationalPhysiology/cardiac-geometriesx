@@ -32,9 +32,6 @@ MPI_SIZE = MPI.COMM_WORLD.size
     ],
     ids=["slab", "lv_ellipsoid", "cylinder"],
 )
-@pytest.mark.skipif(
-    MPI.COMM_WORLD.size > 1, reason="Couldn't get refinement to work in parallel yet"
-)
 def test_refine_analytic_fibers(script, tmp_path: Path):
     comm = MPI.COMM_WORLD
     path = comm.bcast(tmp_path, root=0)
@@ -56,9 +53,6 @@ def test_refine_analytic_fibers(script, tmp_path: Path):
 
 
 @pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
-@pytest.mark.skipif(
-    MPI.COMM_WORLD.size > 1, reason="Couldn't get refinement to work in parallel yet"
-)
 def test_refine_biv(tmp_path: Path):
     comm = MPI.COMM_WORLD
     path = comm.bcast(tmp_path, root=0)

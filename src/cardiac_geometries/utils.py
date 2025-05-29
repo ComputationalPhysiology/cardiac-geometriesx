@@ -403,7 +403,7 @@ def read_mesh(
 ) -> tuple[dolfinx.mesh.Mesh, dict[str, dolfinx.mesh.MeshTags]]:
     tags = {}
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
-        mesh = xdmf.read_mesh(name="Mesh")
+        mesh = xdmf.read_mesh(name="Mesh", ghost_mode=dolfinx.mesh.GhostMode.none)
         for var, name, dim in [
             ("cfun", "Cell tags", mesh.topology.dim),
             ("ffun", "Facet tags", mesh.topology.dim - 1),
