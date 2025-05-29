@@ -53,7 +53,7 @@ def generate_fibers(mesh_type: str, mesh: dolfinx.mesh.Mesh, **kwargs) -> Micros
         markers = kwargs.pop("markers", None)
         clipped = kwargs.pop("clipped", False)
 
-        if markers is not None:
+        if mesh_type == "ukb" and markers is not None:
             from ..mesh import transform_markers
 
             markers = transform_markers(markers, clipped=clipped)
