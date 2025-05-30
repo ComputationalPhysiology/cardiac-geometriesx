@@ -81,6 +81,7 @@ def create_microstructure(
     r_outer: float,
     function_space: str = "P_1",
     outdir: str | Path | None = None,
+    **kwargs,
 ) -> utils.Microstructure:
     """Generate microstructure for cylinder
 

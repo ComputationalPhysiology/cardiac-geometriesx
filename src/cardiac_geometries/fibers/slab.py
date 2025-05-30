@@ -11,7 +11,6 @@ def compute_system(
     t_func: dolfinx.fem.Function,
     alpha_endo: float = -60,
     alpha_epi: float = 60,
-    **kwargs,
 ) -> utils.Microstructure:
     """Compute ldrb system for slab, assuming linear
     angle between endo and epi
@@ -90,6 +89,7 @@ def create_microstructure(
     alpha_epi: float,
     function_space: str = "P_1",
     outdir: str | Path | None = None,
+    **kwargs: dict,
 ) -> utils.Microstructure:
     """Generate microstructure for slab using LDRB algorithm
 
