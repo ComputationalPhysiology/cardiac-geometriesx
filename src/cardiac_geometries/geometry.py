@@ -33,6 +33,14 @@ class Geometry:
     info: dict[str, Any] = field(default_factory=dict)
 
     def save(self, path: str | Path) -> None:
+        """Save the geometry to a file using adios4dolfinx.
+
+        Parameters
+        ----------
+        path : str | Path
+            The path to the file where the geometry will be saved.
+            The file will be created if it does not exist, or overwritten if it does.
+        """
         path = Path(path)
 
         shutil.rmtree(path, ignore_errors=True)
@@ -102,17 +110,51 @@ class Geometry:
 
     @property
     def dx(self):
+        """Volume measure for the mesh using
+        the cell function `cfun` if it exists as subdomain data.
+        """
         return ufl.Measure("dx", domain=self.mesh, subdomain_data=self.cfun)
 
     @property
     def ds(self):
+        """Surface measure for the mesh using
+        the facet function `ffun` if it exists as subdomain data.
+        """
         return ufl.Measure("ds", domain=self.mesh, subdomain_data=self.ffun)
 
     @property
     def facet_normal(self) -> ufl.FacetNormal:
+        """Facet normal vector for the mesh."""
         return ufl.FacetNormal(self.mesh)
 
     def refine(self, n=1, outdir: Path | None = None) -> "Geometry":
+        """
+        Refine the mesh and transfer the meshtags to new geometry.
+        Also regenerate fibers if `self.info` is found.
+        If `self.info` is not found, it currently raises a
+        NotImplementedError, however fiber could be interpolated
+        from the old mesh to the new mesh but this will result in a
+        loss of information about the fiber orientation.
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of times to refine the mesh, by default 1
+        outdir : Path | None, optional
+            Output directory to save the refined mesh and meshtags,
+            by default None in which case the mesh is not saved.
+
+        Returns
+        -------
+        Geometry
+            A new Geometry object with the refined mesh and updated meshtags.
+
+        Raises
+        ------
+        NotImplementedError
+            If `self.info` is not found, indicating that fiber
+            interpolation after refinement is not implemented yet.
+        """
         mesh = self.mesh
         cfun = self.cfun
         ffun = self.ffun
@@ -190,6 +232,24 @@ class Geometry:
         path: str | Path,
         function_space_data: dict[str, np.ndarray] | None = None,
     ) -> "Geometry":
+        """Read geometry from a file using adios4dolfinx.
+
+        Parameters
+        ----------
+        comm : MPI.Intracomm
+            The MPI communicator to use for reading the mesh.
+        path : str | Path
+            The path to the file containing the geometry data.
+        function_space_data : dict[str, np.ndarray] | None, optional
+            A dictionary containing function space data for the functions to be read.
+            If None, it will be read from the file.
+
+        Returns
+        -------
+        Geometry
+            An instance of the Geometry class containing the mesh, markers, and functions.
+        """
+
         path = Path(path)
 
         mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
@@ -234,6 +294,31 @@ class Geometry:
 
     @classmethod
     def from_folder(cls, comm: MPI.Intracomm, folder: str | Path) -> "Geometry":
+        """Read geometry from a folder containing mesh and markers files.
+
+        Parameters
+        ----------
+        comm : MPI.Intracomm
+            The MPI communicator to use for reading the mesh and markers.
+        folder : str | Path
+            The path to the folder containing the geometry data.
+            The folder should contain the following files:
+            - mesh.xdmf: The mesh file in XDMF format.
+            - markers.json: A JSON file containing markers.
+            - microstructure.json: A JSON file containing microstructure data (optional).
+            - microstructure.bp: A BP file containing microstructure functions (optional).
+            - info.json: A JSON file containing additional information (optional).
+
+        Returns
+        -------
+        Geometry
+            An instance of the Geometry class containing the mesh, markers, and functions.
+
+        Raises
+        ------
+        ValueError
+            If the required mesh file is not found in the specified folder.
+        """
         folder = Path(folder)
         logger.info(f"Reading geometry from {folder}")
         # Read mesh
