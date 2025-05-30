@@ -719,7 +719,7 @@ def slab_dolfinx(
         mesh=mesh,
         markers=markers,
         cfun=None,
-        ffun=ft.indices,
+        ffun=ft,
         efun=None,
         vfun=None,
     )
