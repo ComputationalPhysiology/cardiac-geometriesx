@@ -59,6 +59,8 @@ def ukb(
     create_fibers: bool = True,
     fiber_space: str = "P_1",
     clipped: bool = False,
+    use_burns: bool = False,
+    burns_path: Path | None = None,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
@@ -88,6 +90,12 @@ def ukb(
         Function space for fibers of the form family_degree, by default "P_1"
     clipped : bool, optional
         If True create a clipped mesh, by default False
+    use_burns : bool
+        If true, use the atlas from Richard Burns to generate the surfaces.
+        This will override the `all` parameter and use the burns atlas instead.
+    burns_path : Path | None
+        Path to the burns atlas file. This will be a .mat file which will be loaded
+        using scipy.io.loadmat. This needs to be specified if `use_burns`.
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
 
@@ -107,7 +115,11 @@ def ukb(
         raise ImportError(msg) from e
 
     if comm.rank == 0:
-        ukb.cli.main(["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case])
+        surf_args = ["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case]
+        if use_burns:
+            surf_args.extend(["--use_burns", "--burns_path", str(burns_path)])
+
+        ukb.cli.main(surf_args)
         mesh_args = [
             "mesh",
             str(outdir),
