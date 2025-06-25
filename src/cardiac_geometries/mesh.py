@@ -117,7 +117,7 @@ def ukb(
     if comm.rank == 0:
         surf_args = ["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case]
         if use_burns:
-            surf_args.extend(["--use_burns", "--burns_path", str(burns_path)])
+            surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
 
         ukb.cli.main(surf_args)
         mesh_args = [
