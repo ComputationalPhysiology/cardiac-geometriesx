@@ -104,7 +104,13 @@ def laplace(
 
     bcs = [endo_bc, epi_bc]
 
-    problem = LinearProblem(a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+    kwargs = {}
+    if _dolfinx_version >= Version("0.10"):
+        kwargs["petsc_options_prefix"] = "cardiac_geometriesx_laplace"
+
+    problem = LinearProblem(
+        a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"}, **kwargs
+    )
     uh = problem.solve()
 
     if function_space != "P_1":
