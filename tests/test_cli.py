@@ -2,6 +2,7 @@ from pathlib import Path
 
 from mpi4py import MPI
 
+import gmsh
 import pytest
 from click.testing import CliRunner
 
@@ -54,6 +55,7 @@ def test_script(fiber_space, script, tmp_path: Path):
         assert geo.f0 is not None
 
 
+@pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 @pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
 def test_biv_fibers(tmp_path: Path):
     runner = CliRunner()
@@ -81,6 +83,7 @@ def test_biv_fibers(tmp_path: Path):
     ],
     ids=["slab_in_bath", "biv_ellipsoid", "biv_ellipsoid_torso"],
 )
+@pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 def test_script_no_fibers(script, tmp_path: Path):
     runner = CliRunner()
 
