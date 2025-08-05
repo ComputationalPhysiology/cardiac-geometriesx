@@ -2,6 +2,7 @@ from pathlib import Path
 
 from mpi4py import MPI
 
+import gmsh
 import pytest
 
 import cardiac_geometries as cg
@@ -52,6 +53,7 @@ def test_refine_analytic_fibers(script, tmp_path: Path):
     assert refined.mesh.geometry.index_map().size_global > geo.mesh.geometry.index_map().size_global
 
 
+@pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 @pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
 def test_refine_biv(tmp_path: Path):
     comm = MPI.COMM_WORLD
