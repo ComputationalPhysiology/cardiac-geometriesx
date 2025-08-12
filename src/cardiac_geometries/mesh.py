@@ -1063,7 +1063,7 @@ def cylinder(
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
-    """Create an LV ellipsoidal geometry
+    """Create a cylindrical geometry
 
     Parameters
     ----------
@@ -1128,6 +1128,130 @@ def cylinder(
         cgc.cylinder(
             inner_radius=r_inner,
             outer_radius=r_outer,
+            height=height,
+            mesh_name=mesh_name.as_posix(),
+            char_length=char_length,
+            verbose=verbose,
+        )
+    comm.barrier()
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
+
+    if create_fibers:
+        from .fibers.cylinder import create_microstructure
+
+        create_microstructure(
+            mesh=geometry.mesh,
+            function_space=fiber_space,
+            r_inner=r_inner,
+            r_outer=r_outer,
+            alpha_endo=fiber_angle_endo,
+            alpha_epi=fiber_angle_epi,
+            outdir=outdir,
+        )
+
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
+
+    return geo
+
+
+def cylinder_racetrack(
+    outdir: Path | str,
+    r_inner: float = 13.0,
+    r_outer: float = 20.0,
+    height: float = 40.0,
+    inner_flat_face_distance: float = 10.0,
+    outer_flat_face_distance: float = 17.0,
+    char_length: float = 10.0,
+    create_fibers: bool = False,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
+    fiber_space: str = "P_1",
+    aha: bool = True,
+    verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+) -> Geometry:
+    """Create a racetrack-shaped thick cylindrical shell mesh using GMSH.
+
+    Both the inner and outer surfaces have two flat faces on opposite sides.
+
+    Parameters
+    ----------
+    outdir : Optional[Path], optional
+        Directory where to save the results.
+    r_inner : float, optional
+        Radius on the endocardium layer, by default 13.0
+    r_outer : float, optional
+       Radius on the epicardium layer, by default 20.0
+    height : float, optional
+        Longest radius on the endocardium layer, by default 10.0
+    inner_flat_face_distance : float
+        The distance of the inner flat face from the center (along the x-axis).
+        This value must be less than inner_radius. Default is 10.0.
+    outer_flat_face_distance : float
+        The distance of the outer flat face from the center (along the x-axis).
+        This value must be less than outer_radius. Default is 17.0.
+    char_length : float, optional
+        Characteristic length of mesh, by default 10.0
+    create_fibers : bool, optional
+        If True create analytic fibers, by default False
+    fiber_angle_endo : float, optional
+        Angle for the endocardium, by default 60
+    fiber_angle_epi : float, optional
+        Angle for the epicardium, by default -60
+    fiber_space : str, optional
+        Function space for fibers of the form family_degree, by default "P_1"
+    aha : bool, optional
+        If True create 17-segment AHA regions
+    verbose : bool, optional
+        If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
+
+    Returns
+    -------
+    cardiac_geometries.geometry.Geometry
+        A Geometry with the mesh, markers, markers functions and fibers.
+
+    """
+
+    outdir = Path(outdir)
+    mesh_name = outdir / "cylinder_racetrack.msh"
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
+
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                {
+                    "r_inner": r_inner,
+                    "r_outer": r_outer,
+                    "height": height,
+                    "inner_flat_face_distance": inner_flat_face_distance,
+                    "outer_flat_face_distance": outer_flat_face_distance,
+                    "char_length": char_length,
+                    "create_fibers": create_fibers,
+                    "fiber_angle_endo": fiber_angle_endo,
+                    "fiber_angle_epi": fiber_angle_epi,
+                    "fiber_space": fiber_space,
+                    "aha": aha,
+                    "mesh_type": "cylinder",
+                    "cardiac_geometry_version": __version__,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                },
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
+
+        cgc.cylinder_racetrack(
+            inner_radius=r_inner,
+            outer_radius=r_outer,
+            inner_flat_face_distance=inner_flat_face_distance,
+            outer_flat_face_distance=outer_flat_face_distance,
             height=height,
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,

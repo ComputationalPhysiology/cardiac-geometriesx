@@ -15,11 +15,11 @@ classifiers = [
 ]
 keywords = ["cardiac", "geometry"]
 urls = {Homepage = "https://github.com/finsberg/cardiac-geometriesx" }
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
-    "fenics-dolfinx>=0.8.0",
+    "fenics-dolfinx>=0.9.0",
     "structlog",
-    "cardiac-geometries-core",
+    "cardiac-geometries-core>=0.4",
     "rich-click",
     "adios4dolfinx",
     "scifem",
