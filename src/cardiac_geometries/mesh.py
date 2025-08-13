@@ -1266,13 +1266,16 @@ def cylinder_racetrack(
             json.dump(geometry.markers, f, default=utils.json_serial)
 
     if create_fibers:
-        from .fibers.cylinder import create_microstructure
+        from .fibers.cylinder_flat import create_microstructure
 
         create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
             r_outer=r_outer,
+            inner_flat_face_distance=inner_flat_face_distance,
+            ffun=geometry.ffun,
+            markers=geometry.markers,
             alpha_endo=fiber_angle_endo,
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
@@ -1390,13 +1393,16 @@ def cylinder_D_shaped(
             json.dump(geometry.markers, f, default=utils.json_serial)
 
     if create_fibers:
-        from .fibers.cylinder import create_microstructure
+        from .fibers.cylinder_flat import create_microstructure
 
         create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
             r_outer=r_outer,
+            inner_flat_face_distance=inner_flat_face_distance,
+            ffun=geometry.ffun,
+            markers=geometry.markers,
             alpha_endo=fiber_angle_endo,
             alpha_epi=fiber_angle_epi,
             outdir=outdir,

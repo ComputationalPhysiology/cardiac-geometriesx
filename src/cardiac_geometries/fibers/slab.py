@@ -11,6 +11,7 @@ def compute_system(
     t_func: dolfinx.fem.Function,
     alpha_endo: float = -60,
     alpha_epi: float = 60,
+    endo_epi_axis="y",
 ) -> utils.Microstructure:
     """Compute ldrb system for slab, assuming linear
     angle between endo and epi
@@ -39,13 +40,32 @@ def compute_system(
 
     t = t_func.x.array
 
-    f0 = np.array(
-        [
-            np.cos(alpha(t)),
-            np.zeros_like(t),
-            np.sin(alpha(t)),
-        ],
-    )
+    if endo_epi_axis == "y":
+        f0 = np.array(
+            [
+                np.cos(alpha(t)),
+                np.zeros_like(t),
+                np.sin(alpha(t)),
+            ],
+        )
+    elif endo_epi_axis == "z":
+        f0 = np.array(
+            [
+                np.cos(alpha(t)),
+                np.sin(alpha(t)),
+                np.zeros_like(t),
+            ],
+        )
+    elif endo_epi_axis == "x":
+        f0 = np.array(
+            [
+                np.zeros_like(t),
+                np.cos(alpha(t)),
+                np.sin(alpha(t)),
+            ],
+        )
+    else:
+        raise ValueError(f"Unknown endo_epi_axis: {endo_epi_axis}")
 
     s0 = np.array(
         [
