@@ -48,12 +48,26 @@ def compute_system(
                 np.sin(alpha(t)),
             ],
         )
+        n0 = np.array(
+            [
+                np.zeros_like(t),
+                np.ones_like(t),
+                np.zeros_like(t),
+            ],
+        )
     elif endo_epi_axis == "z":
         f0 = np.array(
             [
                 np.cos(alpha(t)),
                 np.sin(alpha(t)),
                 np.zeros_like(t),
+            ],
+        )
+        n0 = np.array(
+            [
+                np.zeros_like(t),
+                np.zeros_like(t),
+                np.ones_like(t),
             ],
         )
     elif endo_epi_axis == "x":
@@ -64,19 +78,18 @@ def compute_system(
                 np.sin(alpha(t)),
             ],
         )
+        n0 = np.array(
+            [
+                np.ones_like(t),
+                np.zeros_like(t),
+                np.zeros_like(t),
+            ],
+        )
     else:
         raise ValueError(f"Unknown endo_epi_axis: {endo_epi_axis}")
 
-    s0 = np.array(
-        [
-            np.zeros_like(t),
-            np.ones_like(t),
-            np.zeros_like(t),
-        ],
-    )
-
-    n0 = np.cross(f0, s0, axis=0)
-    n0 = utils.normalize(n0)
+    s0 = np.cross(f0, n0, axis=0)
+    s0 = utils.normalize(s0)
 
     Vv = space_from_string(
         space_string=f"{element.family_name}_{element.degree}",
