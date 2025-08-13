@@ -31,8 +31,10 @@ MPI_SIZE = MPI.COMM_WORLD.size
         cli.slab,
         cli.lv_ellipsoid,
         cli.cylinder,
+        cli.cylinder_D_shaped,
+        cli.cylinder_racetrack,
     ],
-    ids=["slab", "lv_ellipsoid", "cylinder"],
+    ids=["slab", "lv_ellipsoid", "cylinder", "cylinder_D_shaped", "cylinder_racetrack"],
 )
 @pytest.mark.parametrize("fiber_space", [None, "P_1", "P_2", "Quadrature_2", "DG_1"])
 def test_script(fiber_space, script, tmp_path: Path):
