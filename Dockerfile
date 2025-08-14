@@ -1,5 +1,5 @@
 # We choose ubuntu 22.04 as our base docker image
-FROM ghcr.io/fenics/dolfinx/dolfinx:v0.8.0
+FROM ghcr.io/fenics/dolfinx/dolfinx:stable
 
 ENV PYVISTA_JUPYTER_BACKEND="html"
 
