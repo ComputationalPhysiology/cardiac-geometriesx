@@ -21,7 +21,7 @@ jobs:
           "ghcr.io/fenics/dolfinx/dolfinx:nightly",
         ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install developement version of adios4dolfinx
         if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
