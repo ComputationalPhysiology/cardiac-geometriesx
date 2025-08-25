@@ -53,7 +53,7 @@ jobs:
         run: jupyter book build -W .
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ${{ env.PUBLISH_DIR }}
 
