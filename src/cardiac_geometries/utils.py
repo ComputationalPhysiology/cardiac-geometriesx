@@ -14,6 +14,11 @@ from dolfinx.graph import adjacencylist
 from packaging.version import Version
 from structlog import get_logger
 
+try:
+    import dolfinx.io.gmsh as gmshio
+except ImportError:
+    import dolfinx.io.gmshio as gmshio  # type: ignore[import]
+
 logger = get_logger()
 
 quads = ("Quadrature", "Q", "Quad", "quadrature", "q", "quad")
@@ -90,8 +95,8 @@ def model_to_mesh(
     if comm.rank == rank:
         assert model is not None, "Gmsh model is None on rank responsible for mesh creation."
         # Get mesh geometry and mesh topology for each element
-        x = dolfinx.io.gmshio.extract_geometry(model)
-        topologies = dolfinx.io.gmshio.extract_topology_and_markers(model)
+        x = gmshio.extract_geometry(model)
+        topologies = gmshio.extract_topology_and_markers(model)
 
         # Extract Gmsh cell id, dimension of cell and number of nodes to
         # cell for each
@@ -170,8 +175,8 @@ def model_to_mesh(
             vertex_values = np.empty((0,), dtype=np.int32)
 
     # Create distributed mesh
-    ufl_domain = dolfinx.io.gmshio.ufl_mesh(cell_id, gdim, dtype=dtype)
-    gmsh_cell_perm = dolfinx.io.gmshio.cell_perm_array(
+    ufl_domain = gmshio.ufl_mesh(cell_id, gdim, dtype=dtype)
+    gmsh_cell_perm = gmshio.cell_perm_array(
         dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), num_nodes
     )
     cells = cells[:, gmsh_cell_perm].copy()
@@ -207,7 +212,7 @@ def model_to_mesh(
         facet_type = dolfinx.cpp.mesh.cell_entity_type(
             dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), tdim - 1, 0
         )
-        gmsh_facet_perm = dolfinx.io.gmshio.cell_perm_array(facet_type, num_facet_nodes)
+        gmsh_facet_perm = gmshio.cell_perm_array(facet_type, num_facet_nodes)
         marked_facets = marked_facets[:, gmsh_facet_perm]
 
         local_entities, local_values = distribute_entity_data(
@@ -217,7 +222,7 @@ def model_to_mesh(
         mesh.topology.create_connectivity(topology.dim - 1, tdim)
         adj = adjacencylist(local_entities)
 
-        ft = dolfinx.io.gmshio.meshtags_from_entities(
+        ft = gmshio.meshtags_from_entities(
             mesh, tdim - 1, adj, local_values.astype(np.int32, copy=False)
         )
         ft.name = "Facet tags"
@@ -231,7 +236,7 @@ def model_to_mesh(
         edge_type = dolfinx.cpp.mesh.cell_entity_type(
             dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), tdim - 2, 0
         )
-        gmsh_edge_perm = dolfinx.io.gmshio.cell_perm_array(edge_type, num_edge_nodes)
+        gmsh_edge_perm = gmshio.cell_perm_array(edge_type, num_edge_nodes)
         marked_edges = marked_edges[:, gmsh_edge_perm]
 
         local_entities, local_values = distribute_entity_data(
@@ -239,7 +244,7 @@ def model_to_mesh(
         )
         mesh.topology.create_connectivity(topology.dim - 2, tdim)
         adj = adjacencylist(local_entities)
-        et = dolfinx.io.gmshio.meshtags_from_entities(
+        et = gmshio.meshtags_from_entities(
             mesh, tdim - 2, adj, local_values.astype(np.int32, copy=False)
         )
         et.name = "Edge tags"
@@ -253,7 +258,7 @@ def model_to_mesh(
         vertex_type = dolfinx.cpp.mesh.cell_entity_type(
             dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), tdim - 3, 0
         )
-        gmsh_vertex_perm = dolfinx.io.gmshio.cell_perm_array(vertex_type, num_vertex_nodes)
+        gmsh_vertex_perm = gmshio.cell_perm_array(vertex_type, num_vertex_nodes)
         marked_vertices = marked_vertices[:, gmsh_vertex_perm]
 
         local_entities, local_values = distribute_entity_data(
@@ -261,7 +266,7 @@ def model_to_mesh(
         )
         mesh.topology.create_connectivity(topology.dim - 3, tdim)
         adj = adjacencylist(local_entities)
-        vt = dolfinx.io.gmshio.meshtags_from_entities(
+        vt = gmshio.meshtags_from_entities(
             mesh, tdim - 3, adj, local_values.astype(np.int32, copy=False)
         )
         vt.name = "Vertex tags"
@@ -425,7 +430,7 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     outdir.mkdir(parents=True, exist_ok=True)
 
     if Version(dolfinx.__version__) >= Version("0.10.0"):
-        mesh_data = dolfinx.io.gmshio.read_from_msh(comm=comm, filename=msh_file)
+        mesh_data = gmshio.read_from_msh(comm=comm, filename=msh_file)
         mesh = mesh_data.mesh
         markers_ = mesh_data.physical_groups
         ct = mesh_data.cell_tags
