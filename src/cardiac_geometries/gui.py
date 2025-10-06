@@ -51,8 +51,6 @@ def load_geometry(folder: str):
 def plot_geometry(geo):
     V = dolfinx.fem.functionspace(geo.mesh, ("Lagrange", 1))
 
-    pv.start_xvfb()
-
     # Plot the mesh with cell tags
     mesh_plotter = pv.Plotter()
     mesh_plotter.background_color = "white"
