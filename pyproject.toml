@@ -43,6 +43,7 @@ docs = [
     "jupytext",
     "jupyter",
     "pyvista[all]>=0.43.0",
+    "vtk>=9.5.0",
     "trame-vuetify",
     "ipywidgets",
     "fenicsx-ldrb",
