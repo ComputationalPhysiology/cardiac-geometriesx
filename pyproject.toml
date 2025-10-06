@@ -47,6 +47,8 @@ docs = [
     "ipywidgets",
     "fenicsx-ldrb",
     "ukb-atlas",
+    "sphinx-codeautolink",
+    "sphinx-copybutton",
 ]
 test = [
     "pre-commit",
