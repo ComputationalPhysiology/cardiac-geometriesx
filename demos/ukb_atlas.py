@@ -57,7 +57,6 @@ geometry = cg.utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
 # Now we can plot the mesh
 
-pyvista.start_xvfb()
 vtk_mesh = dolfinx.plot.vtk_mesh(geometry.mesh, geometry.mesh.topology.dim)
 grid = pyvista.UnstructuredGrid(*vtk_mesh)
 plotter = pyvista.Plotter()
