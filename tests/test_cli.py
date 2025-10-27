@@ -81,9 +81,8 @@ def test_biv_fibers(tmp_path: Path):
     [
         cli.slab_in_bath,
         cli.biv_ellipsoid,
-        cli.biv_ellipsoid_torso,
     ],
-    ids=["slab_in_bath", "biv_ellipsoid", "biv_ellipsoid_torso"],
+    ids=["slab_in_bath", "biv_ellipsoid"],
 )
 @pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 def test_script_no_fibers(script, tmp_path: Path):

@@ -211,27 +211,29 @@ def ukb(
     return geo
 
 
+def transform_biv_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
+    return {
+        "base": [markers["BASE"][0]],
+        "lv": [markers["LV_ENDO_FW"][0], markers["LV_SEPTUM"][0]],
+        "rv": [markers["RV_ENDO_FW"][0], markers["RV_SEPTUM"][0]],
+        "epi": [markers["LV_EPI_FW"][0], markers["RV_EPI_FW"][0]],
+    }
+
+
 def biv_ellipsoid(
     outdir: str | Path,
     char_length: float = 0.5,
-    center_lv_x: float = 0.0,
-    center_lv_y: float = 0.0,
-    center_lv_z: float = 0.0,
-    a_endo_lv: float = 2.5,
-    b_endo_lv: float = 1.0,
-    c_endo_lv: float = 1.0,
-    a_epi_lv: float = 3.0,
-    b_epi_lv: float = 1.5,
-    c_epi_lv: float = 1.5,
-    center_rv_x: float = 0.0,
-    center_rv_y: float = 0.5,
-    center_rv_z: float = 0.0,
-    a_endo_rv: float = 3.0,
-    b_endo_rv: float = 1.5,
-    c_endo_rv: float = 1.5,
-    a_epi_rv: float = 4.0,
-    b_epi_rv: float = 2.5,
-    c_epi_rv: float = 2.0,
+    base_cut_z: float = 2.5,
+    box_size: float = 15.0,  # Size of the cutting box
+    rv_wall_thickness: float = 0.4,  # cm
+    lv_wall_thickness: float = 0.5,  # cm
+    rv_offset_x: float = 2.5,
+    lv_radius_x: float = 2.0,
+    lv_radius_y: float = 1.8,
+    lv_radius_z: float = 3.25,
+    rv_radius_x: float = 1.9,
+    rv_radius_y: float = 2.5,
+    rv_radius_z: float = 3.0,
     create_fibers: bool = False,
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
@@ -247,42 +249,20 @@ def biv_ellipsoid(
         Directory where to save the results.
     char_length : float, optional
         Characteristic length of mesh, by default 0.5
-    center_lv_y : float, optional
-        X-coordinate for the center of the lv, by default 0.0
-    center_lv_y : float, optional
-        Y-coordinate for the center of the lv, by default 0.0
-    center_lv_z : float, optional
-        Z-coordinate for the center of the lv, by default 0.0
-    a_endo_lv : float, optional
-        Dilation of lv endo ellipsoid in the x-direction, by default 2.5
-    b_endo_lv : float, optional
-       Dilation of lv endo ellipsoid in the y-direction, by default 1.0
-    c_endo_lv : float, optional
-       Dilation of lv endo ellipsoid in the z-direction, by default 1.0
-    a_epi_lv : float, optional
-        Dilation of lv epi ellipsoid in the x-direction, by default 3.0
-    b_epi_lv : float, optional
-        Dilation of lv epi ellipsoid in the y-direction, by default 1.5
-    c_epi_lv : float, optional
-        Dilation of lv epi ellipsoid in the z-direction, by default 1.5
-    center_rv_x : float, optional
-        X-coordinate for the center of the rv, by default 0.0
-    center_rv_y : float, optional
-        Y-coordinate for the center of the rv, by default 0.5
-    center_rv_z : float, optional
-        Z-coordinate for the center of the rv, by default 0.0
-    a_endo_rv : float, optional
-       Dilation of rv endo ellipsoid in the x-direction, by default 3.0
-    b_endo_rv : float, optional
-       Dilation of rv endo ellipsoid in the y-direction, by default 1.5
-    c_endo_rv : float, optional
-       Dilation of rv endo ellipsoid in the z-direction, by default 1.5
-    a_epi_rv : float, optional
-        Dilation of rv epi ellipsoid in the x-direction, by default 4.0
-    b_epi_rv : float, optional
-        Dilation of rv epi ellipsoid in the y-direction, by default 2.5
-    c_epi_rv : float, optional
-        Dilation of rv epi ellipsoid in the z-direction, by default 2.0
+    box_size : float, optional
+        Size of the cutting box, by default 15.0
+    lv_radius_x : float, optional
+        Radius of the left ventricle in the x-direction, by default 2.0
+    lv_radius_y : float, optional
+        Radius of the left ventricle in the y-direction, by default 1.8
+    lv_radius_z : float, optional
+        Radius of the left ventricle in the z-direction, by default 3.25
+    rv_radius_x : float, optional
+        Radius of the right ventricle in the x-direction, by default 1.9
+    rv_radius_y : float, optional
+        Radius of the right ventricle in the y-direction, by default 2.5
+    rv_radius_z : float, optional
+        Radius of the right ventricle in the z-direction, by default 3.0
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
@@ -311,24 +291,17 @@ def biv_ellipsoid(
             json.dump(
                 {
                     "char_length": char_length,
-                    "center_lv_x": center_lv_x,
-                    "center_lv_y": center_lv_y,
-                    "center_lv_z": center_lv_z,
-                    "a_endo_lv": a_endo_lv,
-                    "b_endo_lv": b_endo_lv,
-                    "c_endo_lv": c_endo_lv,
-                    "a_epi_lv": a_epi_lv,
-                    "b_epi_lv": b_epi_lv,
-                    "c_epi_lv": c_epi_lv,
-                    "center_rv_x": center_rv_x,
-                    "center_rv_y": center_rv_y,
-                    "center_rv_z": center_rv_z,
-                    "a_endo_rv": a_endo_rv,
-                    "b_endo_rv": b_endo_rv,
-                    "c_endo_rv": c_endo_rv,
-                    "a_epi_rv": a_epi_rv,
-                    "b_epi_rv": b_epi_rv,
-                    "c_epi_rv": c_epi_rv,
+                    "base_cut_z": base_cut_z,
+                    "box_size": box_size,
+                    "rv_wall_thickness": rv_wall_thickness,
+                    "lv_wall_thickness": lv_wall_thickness,
+                    "rv_offset_x": rv_offset_x,
+                    "lv_radius_x": lv_radius_x,
+                    "lv_radius_y": lv_radius_y,
+                    "lv_radius_z": lv_radius_z,
+                    "rv_radius_x": rv_radius_x,
+                    "rv_radius_y": rv_radius_y,
+                    "rv_radius_z": rv_radius_z,
                     "create_fibers": create_fibers,
                     "fiber_angle_endo": fiber_angle_endo,
                     "fiber_angle_epi": fiber_angle_epi,
@@ -345,24 +318,17 @@ def biv_ellipsoid(
         cgc.biv_ellipsoid(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
-            center_lv_x=center_lv_x,
-            center_lv_y=center_lv_y,
-            center_lv_z=center_lv_z,
-            a_endo_lv=a_endo_lv,
-            b_endo_lv=b_endo_lv,
-            c_endo_lv=c_endo_lv,
-            a_epi_lv=a_epi_lv,
-            b_epi_lv=b_epi_lv,
-            c_epi_lv=c_epi_lv,
-            center_rv_x=center_rv_x,
-            center_rv_y=center_rv_y,
-            center_rv_z=center_rv_z,
-            a_endo_rv=a_endo_rv,
-            b_endo_rv=b_endo_rv,
-            c_endo_rv=c_endo_rv,
-            a_epi_rv=a_epi_rv,
-            b_epi_rv=b_epi_rv,
-            c_epi_rv=c_epi_rv,
+            base_cut_z=base_cut_z,
+            box_size=box_size,
+            rv_wall_thickness=rv_wall_thickness,
+            lv_wall_thickness=lv_wall_thickness,
+            rv_offset_x=rv_offset_x,
+            lv_radius_x=lv_radius_x,
+            lv_radius_y=lv_radius_y,
+            lv_radius_z=lv_radius_z,
+            rv_radius_x=rv_radius_x,
+            rv_radius_y=rv_radius_y,
+            rv_radius_z=rv_radius_z,
             verbose=verbose,
         )
     comm.barrier()
@@ -382,10 +348,12 @@ def biv_ellipsoid(
             )
             raise ImportError(msg)
 
+        ldrb_markers = transform_biv_markers(geometry.markers)
+
         system = ldrb.dolfinx_ldrb(
             mesh=geometry.mesh,
             ffun=geometry.ffun,
-            markers=geometry.markers,
+            markers=ldrb_markers,
             alpha_endo_lv=fiber_angle_endo,
             alpha_epi_lv=fiber_angle_epi,
             beta_endo_lv=0,
@@ -398,218 +366,6 @@ def biv_ellipsoid(
             functions=(system.f0, system.s0, system.n0),
             outdir=outdir,
         )
-
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
-    return geo
-
-
-def biv_ellipsoid_torso(
-    outdir: str | Path,
-    char_length: float = 0.5,
-    heart_as_surface: bool = False,
-    torso_length: float = 20.0,
-    torso_width: float = 20.0,
-    torso_height: float = 20.0,
-    rotation_angle: float = math.pi / 6,
-    center_lv_x: float = 0.0,
-    center_lv_y: float = 0.0,
-    center_lv_z: float = 0.0,
-    a_endo_lv: float = 2.5,
-    b_endo_lv: float = 1.0,
-    c_endo_lv: float = 1.0,
-    a_epi_lv: float = 3.0,
-    b_epi_lv: float = 1.5,
-    c_epi_lv: float = 1.5,
-    center_rv_x: float = 0.0,
-    center_rv_y: float = 0.5,
-    center_rv_z: float = 0.0,
-    a_endo_rv: float = 3.0,
-    b_endo_rv: float = 1.5,
-    c_endo_rv: float = 1.5,
-    a_epi_rv: float = 4.0,
-    b_epi_rv: float = 2.5,
-    c_epi_rv: float = 2.0,
-    create_fibers: bool = False,
-    fiber_angle_endo: float = 60,
-    fiber_angle_epi: float = -60,
-    fiber_space: str = "P_1",
-    verbose: bool = False,
-    comm: MPI.Comm = MPI.COMM_WORLD,
-) -> Geometry:
-    """Create BiV ellipsoidal geometry
-
-    Parameters
-    ----------
-    outdir : str | Path
-        Directory where to save the results.
-    char_length : float, optional
-        Characteristic length of mesh, by default 0.5
-    heart_as_surface: bool
-        If true, create the heart as a a surface inside the torso,
-        otherwise let the heart be a volume, by default True.
-    torso_length : float, optional
-        Length of torso in the x-direction, by default 20.0
-    torso_width : float, optional
-        Length of torso in the y-direction, by default 20.0
-    torso_height : float, optional
-        Length of torso in the z-direction, by default 20.0
-    rotation_angle: float, optional
-        Angle to rotate the torso in order to object realistic position of
-        the heart in a torso, by default pi / 6
-    center_lv_x : float, optional
-        X-coordinate for the center of the lv, by default 0.0
-    center_lv_y : float, optional
-        Y-coordinate for the center of the lv, by default 0.0
-    center_lv_z : float, optional
-        Z-coordinate for the center of the lv, by default 0.0
-    a_endo_lv : float, optional
-        Dilation of lv endo ellipsoid in the x-direction, by default 2.5
-    b_endo_lv : float, optional
-       Dilation of lv endo ellipsoid in the y-direction, by default 1.0
-    c_endo_lv : float, optional
-       Dilation of lv endo ellipsoid in the z-direction, by default 1.0
-    a_epi_lv : float, optional
-        Dilation of lv epi ellipsoid in the x-direction, by default 3.0
-    b_epi_lv : float, optional
-        Dilation of lv epi ellipsoid in the y-direction, by default 1.5
-    c_epi_lv : float, optional
-        Dilation of lv epi ellipsoid in the z-direction, by default 1.5
-    center_rv_x : float, optional
-        X-coordinate for the center of the rv, by default 0.0
-    center_rv_y : float, optional
-        Y-coordinate for the center of the rv, by default 0.5
-    center_rv_z : float, optional
-        Z-coordinate for the center of the rv, by default 0.0
-    a_endo_rv : float, optional
-       Dilation of rv endo ellipsoid in the x-direction, by default 3.0
-    b_endo_rv : float, optional
-       Dilation of rv endo ellipsoid in the y-direction, by default 1.5
-    c_endo_rv : float, optional
-       Dilation of rv endo ellipsoid in the z-direction, by default 1.5
-    a_epi_rv : float, optional
-        Dilation of rv epi ellipsoid in the x-direction, by default 4.0
-    b_epi_rv : float, optional
-        Dilation of rv epi ellipsoid in the y-direction, by default 2.5
-    c_epi_rv : float, optional
-        Dilation of rv epi ellipsoid in the z-direction, by default 2.0
-    create_fibers : bool, optional
-        If True create analytic fibers, by default False
-    fiber_angle_endo : float, optional
-        Angle for the endocardium, by default 60
-    fiber_angle_epi : float, optional
-        Angle for the epicardium, by default -60
-    fiber_space : str, optional
-        Function space for fibers of the form family_degree, by default "P_1"
-    verbose : bool, optional
-        If True print information from gmsh, by default False
-    comm : MPI.Comm, optional
-        MPI communicator, by default MPI.COMM_WORLD
-
-    Returns
-    -------
-    cardiac_geometries.geometry.Geometry
-        A Geometry with the mesh, markers, markers functions and fibers.
-
-    """
-    outdir = Path(outdir)
-    mesh_name = outdir / "biv_ellipsoid_torso.msh"
-    if comm.rank == 0:
-        outdir.mkdir(exist_ok=True, parents=True)
-
-        with open(outdir / "info.json", "w") as f:
-            json.dump(
-                {
-                    "char_length": char_length,
-                    "heart_as_surface": heart_as_surface,
-                    "torso_length": torso_length,
-                    "torso_width": torso_width,
-                    "torso_height": torso_height,
-                    "rotation_angle": rotation_angle,
-                    "center_lv_x": center_lv_x,
-                    "center_lv_y": center_lv_y,
-                    "center_lv_z": center_lv_z,
-                    "a_endo_lv": a_endo_lv,
-                    "b_endo_lv": b_endo_lv,
-                    "c_endo_lv": c_endo_lv,
-                    "a_epi_lv": a_epi_lv,
-                    "b_epi_lv": b_epi_lv,
-                    "c_epi_lv": c_epi_lv,
-                    "center_rv_x": center_rv_x,
-                    "center_rv_y": center_rv_y,
-                    "center_rv_z": center_rv_z,
-                    "a_endo_rv": a_endo_rv,
-                    "b_endo_rv": b_endo_rv,
-                    "c_endo_rv": c_endo_rv,
-                    "a_epi_rv": a_epi_rv,
-                    "b_epi_rv": b_epi_rv,
-                    "c_epi_rv": c_epi_rv,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "mesh_type": "biv",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
-                f,
-                indent=2,
-                default=utils.json_serial,
-            )
-
-        cgc.biv_ellipsoid_torso(
-            mesh_name=mesh_name.as_posix(),
-            char_length=char_length,
-            heart_as_surface=heart_as_surface,
-            torso_length=torso_length,
-            torso_height=torso_height,
-            torso_width=torso_width,
-            rotation_angle=rotation_angle,
-            center_lv_x=center_lv_x,
-            center_lv_y=center_lv_y,
-            center_lv_z=center_lv_z,
-            a_endo_lv=a_endo_lv,
-            b_endo_lv=b_endo_lv,
-            c_endo_lv=c_endo_lv,
-            a_epi_lv=a_epi_lv,
-            b_epi_lv=b_epi_lv,
-            c_epi_lv=c_epi_lv,
-            center_rv_x=center_rv_x,
-            center_rv_y=center_rv_y,
-            center_rv_z=center_rv_z,
-            a_endo_rv=a_endo_rv,
-            b_endo_rv=b_endo_rv,
-            c_endo_rv=c_endo_rv,
-            a_epi_rv=a_epi_rv,
-            b_epi_rv=b_epi_rv,
-            c_epi_rv=c_epi_rv,
-            verbose=verbose,
-        )
-    comm.barrier()
-
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
-
-    if comm.rank == 0:
-        with open(outdir / "markers.json", "w") as f:
-            json.dump(geometry.markers, f, default=utils.json_serial)
-    comm.barrier()
-
-    if create_fibers:
-        if heart_as_surface:
-            logger.warning("Can only create fibers when heart is a volume.")
-        else:
-            raise NotImplementedError("Fibers not implemented yet for biv ellipsoid.")
-            # from .fibers._biv_ellipsoid import create_biv_in_torso_fibers
-
-            # create_biv_in_torso_fibers(
-            #     mesh=geometry.mesh,
-            #     ffun=geometry.marker_functions.ffun,
-            #     cfun=geometry.marker_functions.cfun,
-            #     markers=geometry.markers,
-            #     fiber_space=fiber_space,
-            #     alpha_endo=fiber_angle_endo,
-            #     alpha_epi=fiber_angle_epi,
-            #     outdir=outdir,
-            # )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo

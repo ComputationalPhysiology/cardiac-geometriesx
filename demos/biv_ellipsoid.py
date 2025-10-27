@@ -79,10 +79,8 @@ if not geodir2.exists():
         fiber_space="P_1",
         fiber_angle_endo=80,
         fiber_angle_epi=-30,
-        a_endo_lv=2.0,
-        a_epi_lv=2.5,
-        center_rv_y=0.3,
-        center_lv_y=-0.3,
+        rv_wall_thickness=0.6,
+        lv_wall_thickness=0.6,
     )
 
 # If the folder already exist, then we just load the geometry
