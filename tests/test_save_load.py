@@ -132,7 +132,7 @@ def test_load_from_folder_mesh_and_function(tmp_path):
         mesh,
         basix.ufl.element(
             family="Lagrange",
-            cell=mesh.ufl_cell().cellname(),
+            cell=mesh.basix_cell(),
             degree=1,
             discontinuous=False,
             shape=(3,),
