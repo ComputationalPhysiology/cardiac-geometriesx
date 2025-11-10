@@ -39,7 +39,7 @@ dev = [
     "wheel",
 ]
 docs = [
-    "jupyter-book",
+    "jupyter-book<2.0",
     "jupytext",
     "jupyter",
     "pyvista[all]>=0.45.0",

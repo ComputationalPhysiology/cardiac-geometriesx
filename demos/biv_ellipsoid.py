@@ -68,7 +68,8 @@ if not pyvista.OFF_SCREEN:
 else:
     fig_as_array = plotter.screenshot("fiber_biv.png")
 
-# Now we could try to redo the exercise but with create a thicker ellipsoid with fibers
+# Now we could try to redo the exercise but with create a thinner RV wall and move the RV a bit closer to the LV.
+# We can also try with different fiber angles, such that the fibers are
 # oriented more longitudinally at the endocardium and more circumferentially at the epicardium.
 
 geodir2 = Path("biv_ellipsoid2")
@@ -79,8 +80,8 @@ if not geodir2.exists():
         fiber_space="P_1",
         fiber_angle_endo=80,
         fiber_angle_epi=-30,
-        rv_wall_thickness=0.6,
-        lv_wall_thickness=0.6,
+        rv_wall_thickness=0.2,
+        rv_offset_x=2.0,
     )
 
 # If the folder already exist, then we just load the geometry
