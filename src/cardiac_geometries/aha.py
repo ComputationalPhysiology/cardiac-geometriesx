@@ -2,16 +2,61 @@ import dolfinx
 import numpy as np
 
 
-def focal(r_long_endo: float, r_short_endo: float):
+def focal(r_long_endo: float | np.ndarray, r_short_endo: float | np.ndarray) -> float | np.ndarray:
+    """Calculate the focal distance for a prolate ellipsoid
+
+    Parameters
+    ----------
+    r_long_endo : float | np.ndarray
+        Radius of the long axis of the endocardium
+    r_short_endo : float | np.ndarray
+        Radius of the short axis of the endocardium"
+
+    Returns
+    -------
+    float | np.ndarray
+        The focal distance for the prolate ellipsoid
+    """
     return np.sqrt(r_long_endo**2 - r_short_endo**2)
 
 
-def full_arctangent(x, y):
+def full_arctangent(x, y) -> float | np.ndarray:
+    """Compute the full arctangent in [0, 2pi]
+
+    Parameters
+    ----------
+    x : float | np.ndarray
+    y : float | np.ndarray
+
+    Returns
+    -------
+    float | np.ndarray
+        The angle in [0, 2pi]
+    """
     t = np.arctan2(x, y)
     return np.where(t < 0, t + 2 * np.pi, t)
 
 
-def cartesian_to_prolate_ellipsoidal(x, y, z, a):
+def cartesian_to_prolate_ellipsoidal(
+    x: float | np.ndarray,
+    y: float | np.ndarray,
+    z: float | np.ndarray,
+    a: float | np.ndarray,
+) -> tuple[float | np.ndarray, float | np.ndarray, float | np.ndarray]:
+    """Convert Cartesian coordinates to prolate ellipsoidal coordinates
+
+    Parameters
+    ----------
+    x : float | np.ndarray
+    y : float | np.ndarray
+    z : float | np.ndarray
+    a : float | np.ndarray
+
+    Returns
+    -------
+    tuple[float | np.ndarray, float | np.ndarray, float | np.ndarray]
+        The prolate ellipsoidal coordinates (nu, mu, phi)
+    """
     b1 = np.sqrt((x + a) ** 2 + y**2 + z**2)
     b2 = np.sqrt((x - a) ** 2 + y**2 + z**2)
 
@@ -23,7 +68,34 @@ def cartesian_to_prolate_ellipsoidal(x, y, z, a):
     return nu, mu, phi
 
 
-def get_level(region: int, mu: np.ndarray | float, mu_base: float, dmu: float):
+def get_level(region: int, mu: np.ndarray | float, mu_base: float, dmu: float) -> np.ndarray | bool:
+    """Get the level set for a given AHA region.
+
+    Notes
+    -----
+    The regions are defined as follows:
+    - Regions 1-6: Basal (mu_base <= mu <= mu_base + dmu)
+    - Regions 7-12: Midventricular (mu_base + dmu < mu <= mu_base + 2 * dmu)
+    - Regions 13-16: Apical (mu_base + 2 * dmu < mu <= mu_base + 3 * dmu)
+    - Region 17: Apex (mu > mu_base + 3 * dmu)
+    This function returns a boolean array indicating whether
+    each mu value belongs to the specified region.
+
+    Parameters
+    ----------
+    region : int
+        The AHA region (1-17)
+    mu : np.ndarray | float
+        The mu coordinate(s)
+    mu_base : float
+        The base value of mu for segmentation
+    dmu : float
+        The segmentation width
+    Returns
+    -------
+    np.ndarray | bool
+        The level set for the given AHA region
+    """
     if 1 <= region <= 6:
         return np.logical_and(mu_base <= mu, mu <= mu_base + dmu)
     elif 7 <= region <= 12:

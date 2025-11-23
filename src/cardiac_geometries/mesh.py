@@ -516,6 +516,11 @@ def lv_ellipsoid(
             vt=geometry.vfun,
         )
 
+        for k, v in geometry.markers.items():
+            # Add all markers except the volume markers
+            if v[0] != 3:
+                markers[k] = v
+
     else:
         markers = geometry.markers
 
