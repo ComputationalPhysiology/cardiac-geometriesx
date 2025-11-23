@@ -161,13 +161,15 @@ geo_aha = cardiac_geometries.geometry.Geometry.from_folder(
 )
 assert geo_aha.cfun is not None
 
+# Now  you can also see that we have additional markers for the AHA segments
 
-topology, cell_types, x = vtk_mesh(
-    geo_aha.mesh, geo_aha.mesh.topology.dim, np.arange(geo_aha.mesh.topology.index_map(geo_aha.mesh.topology.dim).size_local, dtype=np.int32)
-)
+print(geo_aha.markers)
 
+# We can also plot the AHA segments with pyvista
+
+vtk_mesh = dolfinx.plot.vtk_mesh(geo_aha.mesh, geo_aha.mesh.topology.dim)
 p = pyvista.Plotter(window_size=[800, 800])
-grid = pyvista.UnstructuredGrid(topology, cell_types, x)
+grid = pyvista.UnstructuredGrid(*vtk_mesh)
 grid.cell_data["AHA"] = geo_aha.cfun.values
 grid.set_active_scalars("AHA")
 p.add_mesh(grid, show_edges=True)

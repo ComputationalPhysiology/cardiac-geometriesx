@@ -245,7 +245,7 @@ def ukb(
 )
 @click.option(
     "--aha/--no-aha",
-    default=True,
+    default=False,
     is_flag=True,
     type=bool,
     help="If True create 17-segment AHA regions",
@@ -273,7 +273,7 @@ def lv_ellipsoid(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     dmu_factor: float = 1 / 4,
 ):
     outdir = Path(outdir)

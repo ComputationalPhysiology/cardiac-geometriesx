@@ -386,7 +386,7 @@ def lv_ellipsoid(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     dmu_factor: float = 1 / 4,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
@@ -834,7 +834,7 @@ def cylinder(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
@@ -946,7 +946,7 @@ def cylinder_racetrack(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
@@ -1073,7 +1073,7 @@ def cylinder_D_shaped(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
