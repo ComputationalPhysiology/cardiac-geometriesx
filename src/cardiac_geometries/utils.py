@@ -492,8 +492,22 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
     et.name = "Edge tags"
     vt.name = "Vertex tags"
 
+    save_mesh_to_xdmf(comm, outdir / "mesh.xdmf", mesh, ct, ft, et, vt)
+
+    return GMshGeometry(mesh, ct, ft, et, vt, markers)
+
+
+def save_mesh_to_xdmf(
+    comm: MPI.Intracomm,
+    fname: Path,
+    mesh: dolfinx.mesh.Mesh,
+    ct: dolfinx.mesh.MeshTags,
+    ft: dolfinx.mesh.MeshTags,
+    et: dolfinx.mesh.MeshTags,
+    vt: dolfinx.mesh.MeshTags,
+):
     # Save tags to xdmf
-    with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "w") as xdmf:
+    with dolfinx.io.XDMFFile(comm, fname, "w") as xdmf:
         xdmf.write_mesh(mesh)
         xdmf.write_meshtags(
             ct,
@@ -518,8 +532,6 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
             mesh.geometry,
             geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
         )
-
-    return GMshGeometry(mesh, ct, ft, et, vt, markers)
 
 
 def create_xdmf_pointcloud(filename: Path, us: typing.Sequence[dolfinx.fem.Function]) -> None:
