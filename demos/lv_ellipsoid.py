@@ -132,3 +132,47 @@ if not pyvista.OFF_SCREEN:
     plotter.show()
 else:
     fig_as_array = plotter.screenshot("fiber2.png")
+
+
+# ## Creating AHA segments for the LV ellipsoid
+# Finally, we can also create AHA segments for the LV ellipsoid by setting the `
+# aha=True` flag when creating the ellipsoid mesh. This will create a `MeshTags` object
+# containing the AHA segments which can be accessed with the `cfun` attribute of the
+# `Geometry` object. Here we also set `psize_ref=1` to get a finer mesh and we specify
+# `dmu_factor=1/4` (which is also the default). The `dmu_factor` controls the
+# thickness of the basal, midventricular, and apical segments in the long axis.
+# A value of 1/4 means that 25% of the distance from base to apex is used for each segment.
+# A value of 1/3 means that 33% of the distance from base to apex is used for each segment,
+# which means that the 17th segment (the apex) will be taken out, while a value of 0.2 (20%)
+# means that 20% of the distance from base to apex is used for each segment. In this case,
+# We have 20% base, 20% midventricular, 20% apical, and 40% apex.
+
+
+geodir_aha = Path("lv_ellipsoid_aha")
+if not geodir_aha.exists():
+    cardiac_geometries.mesh.lv_ellipsoid(
+        outdir=geodir_aha,
+        aha=True, psize_ref=1, dmu_factor=1/4
+    )
+
+geo_aha = cardiac_geometries.geometry.Geometry.from_folder(
+    comm=MPI.COMM_WORLD,
+    folder=geodir_aha,
+)
+assert geo_aha.cfun is not None
+
+# Now  you can also see that we have additional markers for the AHA segments
+
+print(geo_aha.markers)
+
+# We can also plot the AHA segments with pyvista
+
+vtk_mesh = dolfinx.plot.vtk_mesh(geo_aha.mesh, geo_aha.mesh.topology.dim)
+p = pyvista.Plotter(window_size=[800, 800])
+grid = pyvista.UnstructuredGrid(*vtk_mesh)
+grid.cell_data["AHA"] = geo_aha.cfun.values
+grid.set_active_scalars("AHA")
+p.add_mesh(grid, show_edges=True)
+if pyvista.OFF_SCREEN:
+    figure = p.screenshot("aha_segments.png")
+p.show()

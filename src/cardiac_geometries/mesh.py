@@ -386,7 +386,8 @@ def lv_ellipsoid(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
+    dmu_factor: float = 1 / 4,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
@@ -424,6 +425,8 @@ def lv_ellipsoid(
         Function space for fibers of the form family_degree, by default "P_1"
     aha : bool, optional
         If True create 17-segment AHA regions
+    dmu_factor : float, optional
+        Factor to determine the aha segmentation width, by default 1/4
     verbose : bool, optional
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
@@ -458,6 +461,7 @@ def lv_ellipsoid(
                     "fiber_angle_epi": fiber_angle_epi,
                     "fiber_space": fiber_space,
                     "aha": aha,
+                    "dmu_factor": dmu_factor,
                     "mesh_type": "lv_ellipsoid",
                     "cardiac_geometry_version": __version__,
                     "timestamp": datetime.datetime.now().isoformat(),
@@ -484,23 +488,45 @@ def lv_ellipsoid(
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
-    # if aha:
-    #     from .aha import lv_aha
+    if aha:
+        from .aha import lv_aha
 
-    #     geometry = lv_aha(
-    #         geometry=geometry,
-    #         r_long_endo=r_long_endo,
-    #         r_short_endo=r_short_endo,
-    #         mu_base=mu_base_endo,
-    #     )
-    #     from dolfin import XDMFFile
+        aha_func, markers = lv_aha(
+            mesh=geometry.mesh,
+            r_long_endo=r_long_endo,
+            r_short_endo=r_short_endo,
+            mu_base=mu_base_endo,
+            dmu_factor=dmu_factor,
+        )
+        aha_func.name = "Cell tags"
 
-    #     with XDMFFile((outdir / "cfun.xdmf").as_posix()) as xdmf:
-    #         xdmf.write(geometry.marker_functions.cfun)
+        fname = outdir / "mesh.xdmf"
+        fname.unlink(missing_ok=True)
+        fname.with_suffix(".h5").unlink(missing_ok=True)
+        comm.barrier()
+        from .utils import save_mesh_to_xdmf
+
+        save_mesh_to_xdmf(
+            comm=comm,
+            fname=fname,
+            mesh=geometry.mesh,
+            ct=aha_func,
+            ft=geometry.ffun,
+            et=geometry.efun,
+            vt=geometry.vfun,
+        )
+
+        for k, v in geometry.markers.items():
+            # Add all markers except the volume markers
+            if v[0] != 3:
+                markers[k] = v
+
+    else:
+        markers = geometry.markers
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
-            json.dump(geometry.markers, f, default=utils.json_serial)
+            json.dump(markers, f, default=utils.json_serial)
 
     if create_fibers:
         from .fibers.lv_ellipsoid import create_microstructure
@@ -520,13 +546,6 @@ def lv_ellipsoid(
         )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
-    # if aha:
-    #     # Update schema
-    #     from .geometry import H5Path
-
-    #     cfun = geo.schema["cfun"].to_dict()
-    #     cfun["fname"] = "cfun.xdmf:f"
-    #     geo.schema["cfun"] = H5Path(**cfun)
 
     return geo
 
@@ -815,7 +834,7 @@ def cylinder(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
@@ -927,7 +946,7 @@ def cylinder_racetrack(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
@@ -1054,7 +1073,7 @@ def cylinder_D_shaped(
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
-    aha: bool = True,
+    aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:

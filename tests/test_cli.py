@@ -2,7 +2,7 @@ from pathlib import Path
 
 from mpi4py import MPI
 
-import gmsh
+import numpy as np
 import pytest
 from click.testing import CliRunner
 
@@ -57,7 +57,6 @@ def test_script(fiber_space, script, tmp_path: Path):
         assert geo.f0 is not None
 
 
-@pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 @pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
 def test_biv_fibers(tmp_path: Path):
     runner = CliRunner()
@@ -84,7 +83,6 @@ def test_biv_fibers(tmp_path: Path):
     ],
     ids=["slab_in_bath", "biv_ellipsoid"],
 )
-@pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 def test_script_no_fibers(script, tmp_path: Path):
     runner = CliRunner()
 
@@ -134,3 +132,28 @@ def test_ukb(tmp_path: Path, case: str, clipped: bool):
         assert (path / f"{case}.msh").exists()
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
+
+
+def test_lv_aha(tmp_path: Path):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    res = runner.invoke(
+        cli.lv_ellipsoid,
+        [
+            path.as_posix(),
+            "--aha",
+            "--dmu-factor",
+            "0.2",
+        ],
+    )
+    assert res.exit_code == 0
+    assert path.is_dir()
+
+    geo = Geometry.from_folder(comm=comm, folder=path)
+
+    assert geo.cfun is not None
+    values = np.hstack(comm.allgather(geo.cfun.values))
+    assert len(np.setdiff1d(np.unique(values), np.arange(1, 18))) == 0
