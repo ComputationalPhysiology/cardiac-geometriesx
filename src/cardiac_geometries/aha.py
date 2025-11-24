@@ -106,7 +106,7 @@ def get_level(region: int, mu: np.ndarray | float, mu_base: float, dmu: float) -
         return mu > mu_base + 3 * dmu
 
 
-def get_sector(region: int, phi: np.ndarray | float):
+def get_sector(region: int, phi: np.ndarray | float) -> np.ndarray | bool:
     if region in (1, 7):
         return np.logical_and(0 < phi, phi <= np.pi / 3)
     elif region in (2, 8):
@@ -132,23 +132,32 @@ def get_sector(region: int, phi: np.ndarray | float):
         return np.ones_like(phi, dtype=bool)
 
 
-class Locator:
-    def __init__(self, foc: float, mu_base: float, region: int, dmu_factor: float = 1 / 4) -> None:
-        self.mu_base = abs(mu_base)
-        self.foc = foc
-        self.region = region
-        self.dmu_factor = dmu_factor
+def find_region_entities(
+    mu: np.ndarray, phi: np.ndarray, mu_base: float, region: int, dmu: float
+) -> np.ndarray:
+    """Find the entities belonging to a given AHA region.
 
-    @property
-    def dmu(self) -> float:
-        return (np.pi - self.mu_base) * self.dmu_factor
+    Parameters
+    ----------
+    mu : np.ndarray
+        The mu coordinate(s)
+    phi : np.ndarray
+        The phi coordinate(s)
+    mu_base : float
+        The base value of mu for segmentation
+    region : int
+        The AHA region (1-17)
+    dmu : float
+        The segmentation width
 
-    def __call__(self, X):
-        x, y, z = X
-        nu, mu, phi = cartesian_to_prolate_ellipsoidal(x, y, z, a=self.foc)
-        level = get_level(region=self.region, mu=mu, mu_base=self.mu_base, dmu=self.dmu)
-        sector = get_sector(region=self.region, phi=phi)
-        return np.logical_and(level, sector)
+    Returns
+    -------
+    np.ndarray
+        The indices of entities belonging to the specified AHA region
+    """
+    level = get_level(region=region, mu=mu, mu_base=mu_base, dmu=dmu)
+    sector = get_sector(region=region, phi=phi)
+    return np.where(np.logical_and(level, sector))[0]
 
 
 def lv_aha(
@@ -182,12 +191,17 @@ def lv_aha(
     """
     assert mesh.topology.dim == 3, "AHA segmentation only implemented for 3D geometries"
     foc = focal(r_long_endo=r_long_endo, r_short_endo=r_short_endo)
-    V = dolfinx.fem.functionspace(mesh, ("DG", 0))
+    mu_base = abs(mu_base)
+    x, y, z = dolfinx.mesh.compute_midpoints(
+        mesh,
+        3,
+        entities=np.arange(mesh.topology.index_map(mesh.topology.dim).size_local, dtype=np.int32),
+    ).T
 
+    dmu = (np.pi - mu_base) * dmu_factor
+    _, mu, phi = cartesian_to_prolate_ellipsoidal(x, y, z, a=foc)
     entities = [
-        dolfinx.fem.locate_dofs_geometrical(
-            V, marker=Locator(foc=foc, mu_base=mu_base, region=region, dmu_factor=dmu_factor)
-        )
+        find_region_entities(mu=mu, phi=phi, mu_base=mu_base, region=region, dmu=dmu)
         for region in range(1, 18)
     ]
 
