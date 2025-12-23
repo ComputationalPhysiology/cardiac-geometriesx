@@ -180,6 +180,8 @@ def test_rotate(script, fiber_space, tmp_path: Path):
         args.extend(["--create-fibers", "--fiber-space", fiber_space])
 
     if "ukb" in str(script):
+        if not HAS_UKB:
+            return pytest.skip("UKB atlas is not installed")
         args.extend(["--clipped"])
 
     runner = CliRunner()
