@@ -108,6 +108,42 @@ class Geometry:
 
         self.mesh.comm.barrier()
 
+    def save_folder(self, folder: str | Path) -> None:
+        """Save the geometry to a folder containing mesh and markers files.
+
+        Parameters
+        ----------
+        folder : str | Path
+            The path to the folder where the geometry will be saved.
+            The folder will be created if it does not exist.
+        """
+        comm = self.mesh.comm
+        folder = Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+
+        utils.save_mesh_to_xdmf(
+            comm=comm,
+            fname=folder / "mesh.xdmf",
+            mesh=self.mesh,
+            ct=self.cfun,
+            ft=self.ffun,
+            et=self.efun,
+            vt=self.vfun,
+        )
+
+        if comm.rank == 0:
+            (folder / "markers.json").write_text(json.dumps(self.markers, indent=4))
+            (folder / "info.json").write_text(json.dumps(self.info, indent=4))
+
+        from .fibers.utils import save_microstructure
+
+        save_microstructure(
+            mesh=self.mesh,
+            functions=[f for f in (self.f0, self.s0, self.n0) if f is not None],
+            outdir=folder,
+        )
+        logger.info(f"Geometry saved to {folder}")
+
     @property
     def dx(self):
         """Volume measure for the mesh using
@@ -383,4 +419,57 @@ class Geometry:
             info=info,
             **functions,
             **tags,
+        )
+
+    def rotate(self, target_normal, base_marker):
+        """Rotate the geometry so that the base normal aligns with the target normal.
+
+        Parameters
+        ----------
+        target_normal : np.ndarray
+            The target normal vector to align the base normal with.
+        base_marker : str
+            The marker for the base of the geometry.
+
+        Returns
+        -------
+        Geometry
+            The rotated Geometry object. Only returned if inplace is False.
+        """
+        from . import utils
+
+        msg = (
+            f"Base marker '{base_marker}' not found in markers. "
+            f"Available markers: {list(self.markers.keys())}"
+        )
+        assert base_marker in self.markers, msg
+
+        mesh_rotated, R_matrix, fields_rotated = utils.rotate_geometry_and_fields(
+            mesh=self.mesh,
+            ffun=self.ffun,
+            base_marker=self.markers[base_marker][0],
+            target_normal=target_normal,
+            fields=[f for f in (self.f0, self.s0, self.n0) if f is not None],
+        )
+
+        if self.f0 is not None:
+            f0, s0, n0 = fields_rotated
+        else:
+            f0 = None
+            s0 = None
+            n0 = None
+
+        self.info["rotation_matrix"] = R_matrix.tolist()
+
+        return Geometry(
+            mesh=mesh_rotated,
+            markers=self.markers,
+            cfun=self.cfun,
+            ffun=self.ffun,
+            efun=self.efun,
+            vfun=self.vfun,
+            f0=f0,
+            s0=s0,
+            n0=n0,
+            info=self.info,
         )
