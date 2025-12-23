@@ -2,6 +2,7 @@ import tempfile
 import typing
 import xml.etree.ElementTree as ET
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
@@ -377,6 +378,12 @@ def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
             shape=(3,),
             lagrange_variant=basix.LagrangeVariant.unset,
         )
+
+
+@lru_cache
+def array2functionspace(mesh: dolfinx.mesh.Mesh, arr: np.ndarray) -> dolfinx.fem.functionspace:
+    el = array2element(arr)
+    return dolfinx.fem.functionspace(mesh, el)
 
 
 def handle_mesh_name(mesh_name: str = "") -> Path:
