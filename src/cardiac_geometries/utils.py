@@ -10,6 +10,7 @@ from mpi4py import MPI
 import basix
 import dolfinx
 import numpy as np
+import numpy.typing as npt
 from dolfinx.graph import adjacencylist
 from packaging.version import Version
 from structlog import get_logger
@@ -617,3 +618,140 @@ def create_xdmf_pointcloud(filename: Path, us: typing.Sequence[dolfinx.fem.Funct
     outfile.PerformPuts()
     outfile.Close()
     assert adios.RemoveIO("Point cloud writer")
+
+
+class BaseData(NamedTuple):
+    centroid: npt.NDArray[np.float64]
+    vector: npt.NDArray[np.float64]
+    normal: npt.NDArray[np.float64]
+
+
+def compute_base_data(
+    mesh: dolfinx.mesh.Mesh,
+    facet_tags: dolfinx.mesh.MeshTags,
+    marker,
+) -> BaseData:
+    """Compute the centroid, vector and normal of the base
+
+    Parameters
+    ----------
+    mesh : dolfinx.mesh.Mesh
+        The mesh
+    facet_tags : dolfinx.mesh.MeshTags
+        The facet tags
+    marker : _type_
+        Marker for the base
+
+    Returns
+    -------
+    BaseData
+        NamedTuple containing the centroid, vector and normal of the base
+    """
+    base_facets = facet_tags.find(marker)
+    base_midpoints = mesh.comm.gather(
+        dolfinx.mesh.compute_midpoints(mesh, 2, base_facets),
+        root=0,
+    )
+    base_vector = np.zeros(3)
+    base_centroid = np.zeros(3)
+    base_normal = np.zeros(3)
+    if mesh.comm.rank == 0:
+        bm = np.concatenate(base_midpoints)
+        base_centroid = bm.mean(axis=0)
+        # print("Base centroid", len(base_midpoints))
+        base_points_centered = bm - base_centroid
+        u, s, vh = np.linalg.svd(base_points_centered)
+        base_normal = vh[-1, :]
+        # Initialize vector to be used for cross product
+        vector_init = np.array([0, 1, 0])
+
+        # If the normal is parallel to the initial vector, change the initial vector
+        if np.allclose(np.abs(base_normal), np.abs(vector_init)):
+            vector_init = np.array([0, 0, 1])
+
+        # Find two vectors in the plane, orthogonal to the normal
+        vector = np.cross(base_normal, vector_init)
+        base_vector = np.cross(base_normal, vector)
+
+    base_centroid = mesh.comm.bcast(base_centroid, root=0)
+    base_vector = mesh.comm.bcast(base_vector, root=0)
+    base_normal = mesh.comm.bcast(base_normal, root=0)
+    return BaseData(centroid=base_centroid, vector=base_vector, normal=base_normal)
+
+
+def rotate_geometry_and_fields(
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    base_marker: int,
+    target_normal: typing.Sequence[float] = tuple((1.0, 0.0, 0.0)),
+    fields: typing.Sequence[dolfinx.fem.Function] | None = None,
+) -> tuple[dolfinx.mesh.Mesh, np.ndarray, list[dolfinx.fem.Function]]:
+    """
+    Rotates the mesh and vector fields so that the base normal points in the +x direction.
+    """
+    comm = mesh.comm
+    if comm.size > 1:
+        raise NotImplementedError("rotate_geometry_and_fields only works in serial.")
+
+    if fields is None:
+        fs: list[dolfinx.fem.Function] = []
+    else:
+        fs = list(fields)
+    # Compute current base normal
+    # We use pulse's built-in helper to find the normal of the surface marked as base
+    base_data = compute_base_data(mesh, ffun, base_marker)
+    current_normal = base_data.normal
+
+    # Create rotation matrix
+    R_matrix = np.eye(3)
+    target_normal_normalized: np.ndarray = np.array(target_normal) / np.linalg.norm(target_normal)
+
+    # Compute Rotation Matrix
+    # We find the rotation that aligns current_normal to target_normal
+    if np.allclose(current_normal, target_normal_normalized):
+        logger.info("Geometry already aligned.")
+        return mesh, R_matrix, fs
+
+    # Simple check to avoid singular rotation if vectors are opposite
+    if np.allclose(current_normal, -target_normal_normalized):
+        R_matrix = np.diag([-1.0, -1.0, 1.0])  # 180 flip
+    else:
+        # Calculate cross product and angle
+        v = np.cross(current_normal, target_normal_normalized)
+        s = np.linalg.norm(v)
+        c = np.dot(current_normal, target_normal_normalized)
+
+        if s > 1e-8:
+            # Skew-symmetric cross-product matrix of v
+            vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+            R_matrix = np.eye(3) + vx + vx @ vx * ((1 - c) / (s**2))
+
+    new_fields = []
+    for f in fs:
+        # Ensure it is a vector function
+        bs = f.function_space.dofmap.bs
+        if bs != 3:
+            continue
+
+        # Get underlying array
+        values = f.x.array
+        # Reshape to (Num_DOFs, 3)
+        num_dofs = len(values) // 3
+        vectors = values.reshape((num_dofs, 3))
+
+        # Rotate vectors: v_new = R * v_old
+        vectors_rotated = vectors @ R_matrix.T
+
+        # Assign back
+        f.x.array[:] = vectors_rotated.flatten()
+        new_fields.append(f)
+
+    # Rotate Mesh Coordinates
+    # geometry.x is N x 3. We apply x_new = R * x_old^T -> x_new^T = x_old * R^T
+    coords = mesh.geometry.x[:, :3]
+
+    mesh.geometry.x[:, :3] = coords @ R_matrix.T
+
+    logger.info(f"Rotated geometry. Base normal {current_normal} aligned to {target_normal}")
+    logger.debug(f"Rotation matrix:\n{R_matrix}")
+    return mesh, R_matrix, new_fields

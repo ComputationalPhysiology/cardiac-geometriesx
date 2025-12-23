@@ -26,14 +26,14 @@ logger = get_logger()
 def transform_markers(
     markers: dict[str, tuple[int, int]], clipped: bool = False
 ) -> dict[str, list[int]]:
-    if clipped:
+    if "ENDO_RV" in markers:
         return {
-            "lv": [markers["LV"][0]],
-            "rv": [markers["RV"][0]],
+            "lv": [markers["ENDO_LV"][0]],
+            "rv": [markers["ENDO_RV"][0]],
             "epi": [markers["EPI"][0]],
             "base": [markers["BASE"][0]],
         }
-    else:
+    elif "PV" in markers:
         return {
             "lv": [markers["LV"][0]],
             "rv": [markers["RV"][0]],
@@ -45,6 +45,36 @@ def transform_markers(
                 markers["MV"][0],
             ],
         }
+    elif "ENDO_LV" in markers:
+        return {
+            "lv": [markers["ENDO_LV"][0]],
+            "epi": [markers["EPI"][0]],
+            "base": [markers["BASE"][0]],
+        }
+    elif "LV_ENDO_FW" in markers:
+        return {
+            "base": [markers["BASE"][0]],
+            "lv": [markers["LV_ENDO_FW"][0], markers["LV_SEPTUM"][0]],
+            "rv": [markers["RV_ENDO_FW"][0], markers["RV_SEPTUM"][0]],
+            "epi": [markers["LV_EPI_FW"][0], markers["RV_EPI_FW"][0]],
+        }
+    elif "ENDO" in markers:
+        return {
+            "lv": [markers["ENDO"][0]],
+            "epi": [markers["EPI"][0]],
+            "base": [markers["BASE"][0]],
+        }
+    elif "BASE" in markers:
+        return {
+            "lv": [markers["LV"][0]],
+            "rv": [markers["RV"][0]],
+            "epi": [markers["EPI"][0]],
+            "base": [markers["BASE"][0]],
+        }
+
+    else:
+        # Assume they are already transformed
+        return {k: [v[0]] for k, v in markers.items()}
 
 
 def ukb(
@@ -211,15 +241,6 @@ def ukb(
     return geo
 
 
-def transform_biv_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
-    return {
-        "base": [markers["BASE"][0]],
-        "lv": [markers["LV_ENDO_FW"][0], markers["LV_SEPTUM"][0]],
-        "rv": [markers["RV_ENDO_FW"][0], markers["RV_SEPTUM"][0]],
-        "epi": [markers["LV_EPI_FW"][0], markers["RV_EPI_FW"][0]],
-    }
-
-
 def biv_ellipsoid(
     outdir: str | Path,
     char_length: float = 0.5,
@@ -348,7 +369,7 @@ def biv_ellipsoid(
             )
             raise ImportError(msg)
 
-        ldrb_markers = transform_biv_markers(geometry.markers)
+        ldrb_markers = transform_markers(geometry.markers)
 
         system = ldrb.dolfinx_ldrb(
             mesh=geometry.mesh,

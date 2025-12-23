@@ -3,6 +3,8 @@ import math
 from importlib.metadata import metadata
 from pathlib import Path
 
+from mpi4py import MPI
+
 import rich_click as click
 
 from . import mesh
@@ -110,6 +112,13 @@ def app():
     help="If True create clip away the outflow tracts",
     show_default=True,
 )
+@click.option(
+    "--create-fibers",
+    default=True,
+    is_flag=True,
+    help="If True create rule-based fibers",
+    show_default=True,
+)
 def ukb(
     outdir: Path | str,
     mode: int = -1,
@@ -121,6 +130,7 @@ def ukb(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     clipped: bool = False,
+    create_fibers: bool = True,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -136,6 +146,7 @@ def ukb(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         clipped=clipped,
+        create_fibers=create_fibers,
     )
     geo.save(outdir / "ukb.bp")
 
@@ -996,6 +1007,68 @@ def gui():
     sp.run(["streamlit", "run", gui_path.as_posix()])
 
 
+@click.command(help="Rotate a mesh to align with a target normal")
+@click.argument(
+    "folder",
+    required=True,
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+)
+@click.option(
+    "-o",
+    "--outdir",
+    required=True,
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+)
+@click.option(
+    "--target-normal",
+    required=True,
+    type=float,
+    nargs=3,
+    help="Target normal vector to align the base normal with",
+)
+@click.option(
+    "--base-marker",
+    default="BASE",
+    type=str,
+    help="Marker name for the base",
+    show_default=True,
+)
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output",
+    show_default=True,
+)
+def rotate(
+    folder: Path,
+    outdir: Path,
+    target_normal: list[float],
+    base_marker: str = "BASE",
+    verbose: bool = False,
+):
+    from .geometry import Geometry
+
+    init_logging(verbose=verbose)
+    comm = MPI.COMM_WORLD
+
+    geo = Geometry.from_folder(comm=comm, folder=folder)
+    geo.rotate(target_normal=target_normal, base_marker=base_marker)
+    geo.save_folder(Path(outdir))
+
+
 app.add_command(lv_ellipsoid)
 app.add_command(biv_ellipsoid)
 app.add_command(slab)
@@ -1005,3 +1078,4 @@ app.add_command(ukb)
 app.add_command(cylinder)
 app.add_command(cylinder_racetrack)
 app.add_command(cylinder_D_shaped)
+app.add_command(rotate)

@@ -157,3 +157,48 @@ def test_lv_aha(tmp_path: Path):
     assert geo.cfun is not None
     values = np.hstack(comm.allgather(geo.cfun.values))
     assert len(np.setdiff1d(np.unique(values), np.arange(1, 18))) == 0
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        cli.lv_ellipsoid,
+        cli.biv_ellipsoid,
+        cli.ukb,
+    ],
+    ids=["lv_ellipsoid", "biv_ellipsoid", "ukb"],
+)
+@pytest.mark.parametrize("fiber_space", [None, "P_1"])
+def test_rotate(script, fiber_space, tmp_path: Path):
+    comm = MPI.COMM_WORLD
+    if comm.size > 1:
+        return pytest.skip("rotate works in serial.")
+    path = comm.bcast(tmp_path, root=0)
+    path_orig = path / "original"
+    args = [path_orig.as_posix()]
+    if fiber_space is not None:
+        args.extend(["--create-fibers", "--fiber-space", fiber_space])
+
+    if "ukb" in str(script):
+        args.extend(["--clipped"])
+
+    runner = CliRunner()
+    res = runner.invoke(script, args)
+    assert res.exit_code == 0
+    path_rotated = path / "rotated"
+    args = [
+        path_orig.as_posix(),
+        "-o",
+        path_rotated.as_posix(),
+        "--target-normal",
+        "0.0",
+        "1.0",
+        "0.0",
+    ]
+    res = runner.invoke(cli.rotate, args)
+
+    assert res.exit_code == 0
+    geo_rotated = Geometry.from_folder(comm=comm, folder=path_rotated)
+    assert geo_rotated.mesh.geometry.dim == 3
+    if fiber_space is not None:
+        assert geo_rotated.f0 is not None
