@@ -36,6 +36,7 @@ def save_microstructure(
         fname = Path(outdir) / "microstructure-viz.xdmf"
         fname.unlink(missing_ok=True)
         fname.with_suffix(".h5").unlink(missing_ok=True)
+
         with XDMFFile(fname, functions) as xdmf:
             xdmf.write(0.0)
 

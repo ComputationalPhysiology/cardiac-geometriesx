@@ -393,8 +393,7 @@ class Geometry:
             # )
             for name, el in microstructure.items():
                 logger.debug(f"Reading {name}")
-                element = utils.array2element(el)
-                V = dolfinx.fem.functionspace(mesh, element)
+                V = utils.array2functionspace(mesh, tuple(el))
                 f = dolfinx.fem.Function(V, name=name)
                 try:
                     adios4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
@@ -444,12 +443,13 @@ class Geometry:
         )
         assert base_marker in self.markers, msg
 
+        fields = [f for f in (self.f0, self.s0, self.n0) if f is not None]
         mesh_rotated, R_matrix, fields_rotated = utils.rotate_geometry_and_fields(
             mesh=self.mesh,
             ffun=self.ffun,
             base_marker=self.markers[base_marker][0],
             target_normal=target_normal,
-            fields=[f for f in (self.f0, self.s0, self.n0) if f is not None],
+            fields=fields,
         )
 
         if self.f0 is not None:
