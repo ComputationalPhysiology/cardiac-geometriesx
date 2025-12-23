@@ -23,6 +23,24 @@ __version__ = meta["Version"]
 logger = get_logger()
 
 
+def transform_biv_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
+    import warnings
+
+    warnings.warn(
+        "transform_biv_markers is deprecated and will be removed in a future release. "
+        "Use transform_markers instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+    return {
+        "base": [markers["BASE"][0]],
+        "lv": [markers["LV_ENDO_FW"][0], markers["LV_SEPTUM"][0]],
+        "rv": [markers["RV_ENDO_FW"][0], markers["RV_SEPTUM"][0]],
+        "epi": [markers["LV_EPI_FW"][0], markers["RV_EPI_FW"][0]],
+    }
+
+
 def transform_markers(
     markers: dict[str, tuple[int, int]], clipped: bool = False
 ) -> dict[str, list[int]]:
