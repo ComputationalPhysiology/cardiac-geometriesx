@@ -182,12 +182,11 @@ def test_rotate(script, fiber_space, tmp_path: Path):
     if "ukb" in str(script):
         if not HAS_UKB:
             return pytest.skip("UKB atlas package is not installed")
+        args.extend(["--clipped"])
 
     if "biv_ellipsoid" in str(script):
         if not HAS_LDRB:
             return pytest.skip("ldrb package is not installed")
-
-        args.extend(["--clipped"])
 
     runner = CliRunner()
     res = runner.invoke(script, args)
