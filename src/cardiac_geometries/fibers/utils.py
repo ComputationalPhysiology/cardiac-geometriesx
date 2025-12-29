@@ -53,8 +53,11 @@ def save_microstructure(
 
     filename = Path(outdir) / "microstructure.bp"
     shutil.rmtree(filename, ignore_errors=True)
+    adios4dolfinx.write_mesh(mesh=mesh, filename=filename)
+
     for function in functions:
-        adios4dolfinx.write_function_on_input_mesh(u=function, filename=filename)
+        # adios4dolfinx.write_function_on_input_mesh(u=function, filename=filename)
+        adios4dolfinx.write_function(u=function, filename=filename)
 
     attributes = {f.name: element2array(f.ufl_element()) for f in functions}
     adios4dolfinx.write_attributes(

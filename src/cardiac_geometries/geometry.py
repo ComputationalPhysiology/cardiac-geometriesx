@@ -387,19 +387,34 @@ class Geometry:
         functions = {}
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
+            micro_mesh = adios4dolfinx.read_mesh(comm=comm, filename=microstructure_path)
+            print("Micro mesh is mesh", micro_mesh is mesh)
             logger.debug("Reading microstructure")
             # function_space = adios4dolfinx.read_attributes(
             #     comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
             # )
             for name, el in microstructure.items():
                 logger.debug(f"Reading {name}")
-                V = utils.array2functionspace(mesh, tuple(el))
+                V_micro = utils.array2functionspace(micro_mesh, tuple(el), id=id(micro_mesh))
+                f_micro = dolfinx.fem.Function(V_micro, name=name)
+                V = utils.array2functionspace(mesh, tuple(el), id=id(mesh))
                 f = dolfinx.fem.Function(V, name=name)
                 try:
-                    adios4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
+                    adios4dolfinx.read_function(u=f_micro, filename=microstructure_path, name=name)
                 except KeyError:
                     continue
                 else:
+                    # mesh_cell_map = mesh.topology.index_map(mesh.topology.dim)
+                    # num_cells_on_proc = mesh_cell_map.size_local + mesh_cell_map.num_ghosts
+                    # cells = np.arange(num_cells_on_proc, dtype=np.int32)
+                    # interpolation_data = dolfinx.fem.create_interpolation_data(V, V_micro, cells)
+                    # f.interpolate_nonmatching(
+                    #   f_micro, cells, interpolation_data=interpolation_data
+                    # )
+
+                    # Interpolating does not work for quad functions.
+                    # Assuming same mesh partitioning.
+                    f.x.array[:] = f_micro.x.array[:]
                     functions[name] = f
 
         if (folder / "info.json").exists():

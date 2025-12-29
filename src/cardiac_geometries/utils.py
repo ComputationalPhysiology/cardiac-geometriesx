@@ -381,7 +381,9 @@ def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
 
 
 @lru_cache
-def array2functionspace(mesh: dolfinx.mesh.Mesh, arr: np.ndarray) -> dolfinx.fem.functionspace:
+def array2functionspace(
+    mesh: dolfinx.mesh.Mesh, arr: np.ndarray, id: int
+) -> dolfinx.fem.functionspace:
     el = array2element(arr)
     return dolfinx.fem.functionspace(mesh, el)
 
