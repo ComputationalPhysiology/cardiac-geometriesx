@@ -67,14 +67,10 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = plotter.screenshot("ukb_mesh.png")
 
-# We als save the markers to json
+# We also print the markers
 
 print(geometry.markers)
-if comm.rank == 0:
-    (outdir / "markers.json").write_text(
-        json.dumps(geometry.markers, default=cg.utils.json_serial)
-    )
-comm.barrier()
+
 
 # And plot the facet tags
 
@@ -130,11 +126,14 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = p.screenshot("new_facet_tags_ukb.png")
 
-# Let us also save the markers so that we can inspect them later
+# Let us also save the mesh and  markers so that we can inspect them later. Let us save them in a adios2 file called `geometry.bp`
 
-with dolfinx.io.XDMFFile(geometry.mesh.comm, outdir / "new_ffun.xdmf", "w") as xdmf:
-    xdmf.write_mesh(geometry.mesh)
-    xdmf.write_meshtags(ffun, geometry.mesh.geometry)
+cg.geometry.save_geometry(
+    path=outdir / "geometry.bp",
+    mesh=geometry.mesh,
+    markers=geometry.markers,
+    ffun=ffun,
+)
 
 # Now let ut combine the markers as well so that they align with the markers needed in fenicsx-ldrb
 
@@ -160,10 +159,10 @@ system = ldrb.dolfinx_ldrb(
     fiber_space=fiber_space,
 )
 
-# and save them
+# and save them in the same file
 
 cg.fibers.utils.save_microstructure(
-    mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), outdir=outdir
+    mesh=geometry.mesh, functions=(system.f0, system.s0, system.n0), path=outdir / "geometry.bp"
 )
 
 # Let us also plot the fibers

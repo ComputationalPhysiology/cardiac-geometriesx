@@ -236,6 +236,6 @@ def create_microstructure(
         long_axis=long_axis,
     )
     if outdir is not None:
-        utils.save_microstructure(mesh, system, outdir)
+        utils.save_microstructure(mesh, system, path=Path(outdir) / "geometry.bp")
 
     return system

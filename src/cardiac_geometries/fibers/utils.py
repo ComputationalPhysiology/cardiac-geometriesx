@@ -10,7 +10,7 @@ import ufl
 from dolfinx.fem.petsc import LinearProblem
 from packaging.version import Version
 
-from ..utils import space_from_string
+from ..utils import element2array, json_serial, space_from_string
 
 _dolfinx_version = Version(dolfinx.__version__)
 
@@ -22,60 +22,54 @@ class Microstructure(NamedTuple):
 
 
 def save_microstructure(
-    mesh: dolfinx.mesh.Mesh, functions: Sequence[dolfinx.fem.Function], outdir: str | Path
+    mesh: dolfinx.mesh.Mesh,
+    functions: Sequence[dolfinx.fem.Function],
+    path: Path,
+    viz_path: Path | None = None,
+    viz: bool = True,
+    checkpoint: bool = True,
 ) -> None:
-    from ..utils import element2array
-
     if len(functions) == 0:
         return
     # Save for paraview visualization
 
-    if functions[0].function_space.ufl_element().family_name == "quadrature":
-        from scifem.xdmf import XDMFFile
+    if viz:
+        if functions[0].function_space.ufl_element().family_name == "quadrature":
+            from scifem.xdmf import XDMFFile
 
-        fname = Path(outdir) / "microstructure-viz.xdmf"
-        fname.unlink(missing_ok=True)
-        fname.with_suffix(".h5").unlink(missing_ok=True)
+            if viz_path is None:
+                viz_path = path.parent / "microstructure-viz.xdmf"
 
-        with XDMFFile(fname, functions) as xdmf:
-            xdmf.write(0.0)
+            viz_path = viz_path.with_suffix(".xdmf")
+            viz_path.unlink(missing_ok=True)
+            viz_path.with_suffix(".h5").unlink(missing_ok=True)
 
-    else:
-        fname = Path(outdir) / "microstructure-viz.bp"
-        shutil.rmtree(fname, ignore_errors=True)
-        try:
-            with dolfinx.io.VTXWriter(mesh.comm, fname, functions, engine="BP4") as file:
-                file.write(0.0)
-        except RuntimeError as ex:
-            print(f"Failed to write microstructure: {ex}")
+            with XDMFFile(viz_path, functions) as xdmf:
+                xdmf.write(0.0)
+
+        else:
+            if viz_path is None:
+                viz_path = path.parent / "microstructure-viz.bp"
+            viz_path = viz_path.with_suffix(".bp")
+            shutil.rmtree(viz_path, ignore_errors=True)
+            try:
+                with dolfinx.io.VTXWriter(mesh.comm, viz_path, functions, engine="BP4") as file:
+                    file.write(0.0)
+            except RuntimeError as ex:
+                print(f"Failed to write microstructure: {ex}")
 
     # Save with proper function space
 
-    filename = Path(outdir) / "microstructure.bp"
-    shutil.rmtree(filename, ignore_errors=True)
-    adios4dolfinx.write_mesh(mesh=mesh, filename=filename)
+    if checkpoint:
+        from ..geometry import microstructure_path
 
-    for function in functions:
-        # adios4dolfinx.write_function_on_input_mesh(u=function, filename=filename)
-        adios4dolfinx.write_function(u=function, filename=filename)
-
-    attributes = {f.name: element2array(f.ufl_element()) for f in functions}
-    adios4dolfinx.write_attributes(
-        comm=mesh.comm,
-        filename=filename,
-        name="function_space",
-        attributes=attributes,
-    )
-
-    def json_serial(obj):
-        if isinstance(obj, (np.ndarray)):
-            return obj.tolist()
-        raise TypeError("Type %s not serializable" % type(obj))
-
-    if mesh.comm.rank == 0:
-        (Path(outdir) / "microstructure.json").write_text(
-            json.dumps(attributes, indent=4, default=json_serial)
-        )
+        attributes = {f.name: element2array(f.ufl_element()) for f in functions}
+        if mesh.comm.rank == 0:
+            microstructure_path(path).write_text(
+                json.dumps(attributes, indent=4, default=json_serial)
+            )
+        for name, u in zip(("f0", "s0", "n0"), functions):
+            adios4dolfinx.write_function(u=u, filename=path, name=name)
 
 
 def normalize(u):

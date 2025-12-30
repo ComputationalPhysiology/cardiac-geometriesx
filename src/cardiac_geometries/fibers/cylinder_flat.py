@@ -159,6 +159,6 @@ def create_microstructure(
     system_cylinder.n0.x.array[:] = n0_arr.reshape(-1)
 
     if outdir is not None:
-        utils.save_microstructure(mesh, system_cylinder, outdir)
+        utils.save_microstructure(mesh, system_cylinder, path=Path(outdir) / "geometry.bp")
 
     return system_cylinder

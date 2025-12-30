@@ -124,9 +124,6 @@ def test_load_from_folder_mesh_and_function(tmp_path):
     mesh = dolfinx.mesh.create_unit_cube(comm, 3, 3, 3)
     mesh.name = "Mesh"
 
-    with dolfinx.io.XDMFFile(comm, folder / "mesh.xdmf", "w") as file:
-        file.write_mesh(mesh)
-
     # Create and arbitrary function
     V = dolfinx.fem.functionspace(
         mesh,
@@ -141,7 +138,12 @@ def test_load_from_folder_mesh_and_function(tmp_path):
     f = dolfinx.fem.Function(V)
     f.interpolate(lambda x: x)
     f.name = "f0"
-    cardiac_geometries.fibers.utils.save_microstructure(mesh=mesh, functions=(f,), outdir=folder)
+
+    cardiac_geometries.geometry.save_geometry(
+        path=folder / "geometry.bp",
+        mesh=mesh,
+        f0=f,
+    )
 
     geo = cardiac_geometries.geometry.Geometry.from_folder(comm, folder)
     assert geo.mesh.topology.index_map(3).size_global == mesh.topology.index_map(3).size_global

@@ -7,10 +7,8 @@ from typing import Any
 
 from mpi4py import MPI
 
-import adios2
 import adios4dolfinx
 import dolfinx
-import numpy as np
 import ufl
 from packaging.version import Version
 
@@ -34,7 +32,7 @@ def microstructure_path(path: Path) -> Path:
 def save_geometry(
     path: Path,
     mesh: dolfinx.mesh.Mesh,
-    markers: dict[str, tuple[int, int]],
+    markers: dict[str, tuple[int, int]] | None = None,
     info: dict[str, Any] | None = None,
     cfun: dolfinx.mesh.MeshTags | None = None,
     ffun: dolfinx.mesh.MeshTags | None = None,
@@ -51,7 +49,8 @@ def save_geometry(
     adios4dolfinx.write_mesh(mesh=mesh, filename=path)
 
     if mesh.comm.rank == 0:
-        markers_path(path).write_text(json.dumps(markers, indent=4, default=utils.json_serial))
+        if markers is not None:
+            markers_path(path).write_text(json.dumps(markers, indent=4, default=utils.json_serial))
         if info is not None:
             info_path(path).write_text(json.dumps(info, indent=4, default=utils.json_serial))
 
@@ -69,46 +68,30 @@ def save_geometry(
             filename=path,
             meshtag_name="Facet tags",
         )
-    if efun is not None:
-        adios4dolfinx.write_meshtags(
-            meshtags=efun,
-            mesh=mesh,
-            filename=path,
-            meshtag_name="Edge tags",
-        )
-    if vfun is not None:
-        adios4dolfinx.write_meshtags(
-            meshtags=vfun,
-            mesh=mesh,
-            filename=path,
-            meshtag_name="Vertex tags",
-        )
-
-    if f0 is not None:
-        el = f0.ufl_element()
-        arr = utils.element2array(el)
-        if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
-            "2.10.2"
-        ):
-            # This is broken in adios for numpy >= 2.11
-            adios4dolfinx.write_attributes(
-                comm=mesh.comm,
+    if Version(dolfinx.__version__) >= Version("0.10.0"):
+        # Write edge and vertex tags is buggy in older versions
+        if efun is not None:
+            adios4dolfinx.write_meshtags(
+                meshtags=efun,
+                mesh=mesh,
                 filename=path,
-                name="function_space",
-                attributes={k: arr for k in ("f0", "s0", "n0")},
+                meshtag_name="Edge tags",
+            )
+        if vfun is not None:
+            adios4dolfinx.write_meshtags(
+                meshtags=vfun,
+                mesh=mesh,
+                filename=path,
+                meshtag_name="Vertex tags",
             )
 
-        functions = {f for f in (f0, s0, n0) if f is not None}
-        attributes = {f.name: utils.element2array(f.ufl_element()) for f in functions}
-        if mesh.comm.rank == 0:
-            microstructure_path(path).write_text(
-                json.dumps(attributes, indent=4, default=utils.json_serial)
-            )
-        adios4dolfinx.write_function(u=f0, filename=path, name="f0")
-    if s0 is not None:
-        adios4dolfinx.write_function(u=s0, filename=path, name="s0")
-    if n0 is not None:
-        adios4dolfinx.write_function(u=n0, filename=path, name="n0")
+    from .fibers.utils import save_microstructure
+
+    save_microstructure(
+        mesh=mesh,
+        functions=[f for f in (f0, s0, n0) if f is not None],
+        path=path,
+    )
     mesh.comm.barrier()
 
 
@@ -175,13 +158,6 @@ class Geometry:
             (folder / "markers.json").write_text(json.dumps(self.markers, indent=4))
             (folder / "info.json").write_text(json.dumps(self.info, indent=4))
 
-        from .fibers.utils import save_microstructure
-
-        save_microstructure(
-            mesh=self.mesh,
-            functions=[f for f in (self.f0, self.s0, self.n0) if f is not None],
-            outdir=folder,
-        )
         save_geometry(
             path=folder / "geometry.bp",
             mesh=self.mesh,
@@ -375,7 +351,7 @@ class Geometry:
                     mesh=mesh, meshtag_name=meshtag_name, filename=path
                 )
             except (KeyError, IndexError):
-                print(name, "not found in", path)
+                logger.debug(f"{name} not found in {path}")
                 tags[name] = None
 
         functions = {}
@@ -394,8 +370,7 @@ class Geometry:
 
         assert isinstance(function_space_data, dict), "function_space_data must be a dictionary"
         for name, el in function_space_data.items():
-            element = utils.array2element(el)
-            V = dolfinx.fem.functionspace(mesh, element)
+            V = utils.array2functionspace(mesh, tuple(el))
             f = dolfinx.fem.Function(V, name=name)
             try:
                 adios4dolfinx.read_function(u=f, filename=path, name=name)
