@@ -114,7 +114,7 @@ def app():
 )
 @click.option(
     "--create-fibers",
-    default=True,
+    default=False,
     is_flag=True,
     help="If True create rule-based fibers",
     show_default=True,

@@ -15,7 +15,7 @@ from structlog import get_logger
 
 from . import utils
 from .fibers.utils import save_microstructure
-from .geometry import Geometry
+from .geometry import Geometry, save_geometry
 
 meta = metadata("cardiac-geometriesx")
 __version__ = meta["Version"]
@@ -192,30 +192,27 @@ def ukb(
         mesh_name = outdir / f"{case}.msh"
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
-
+    info = {
+        "mode": mode,
+        "std": std,
+        "case": case,
+        "char_length_max": char_length_max,
+        "char_length_min": char_length_min,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "cardiac_geometry_version": __version__,
+        "mesh_type": "ukb",
+        "clipped": clipped,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         (outdir / "markers.json").write_text(
             json.dumps(geometry.markers, default=utils.json_serial)
         )
-        (outdir / "info.json").write_text(
-            json.dumps(
-                {
-                    "mode": mode,
-                    "std": std,
-                    "case": case,
-                    "char_length_max": char_length_max,
-                    "char_length_min": char_length_min,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "cardiac_geometry_version": __version__,
-                    "mesh_type": "ukb",
-                    "clipped": clipped,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                }
-            )
-        )
+        (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
 
+    fibers = {}
     if create_fibers:
         try:
             import ldrb
@@ -243,6 +240,7 @@ def ukb(
             functions=(system.f0, system.s0, system.n0),
             outdir=outdir,
         )
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
         for k, v in system._asdict().items():
             if v is None:
@@ -255,6 +253,17 @@ def ukb(
             with dolfinx.io.VTXWriter(comm, outdir / f"{k}-viz.bp", [v], engine="BP4") as vtx:
                 vtx.write(0.0)
 
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
     geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
 
@@ -323,32 +332,33 @@ def biv_ellipsoid(
     """
     outdir = Path(outdir)
     mesh_name = outdir / "biv_ellipsoid.msh"
+    info = {
+        "char_length": char_length,
+        "base_cut_z": base_cut_z,
+        "box_size": box_size,
+        "rv_wall_thickness": rv_wall_thickness,
+        "lv_wall_thickness": lv_wall_thickness,
+        "rv_offset_x": rv_offset_x,
+        "lv_radius_x": lv_radius_x,
+        "lv_radius_y": lv_radius_y,
+        "lv_radius_z": lv_radius_z,
+        "rv_radius_x": rv_radius_x,
+        "rv_radius_y": rv_radius_y,
+        "rv_radius_z": rv_radius_z,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "mesh_type": "biv_ellipsoid",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "char_length": char_length,
-                    "base_cut_z": base_cut_z,
-                    "box_size": box_size,
-                    "rv_wall_thickness": rv_wall_thickness,
-                    "lv_wall_thickness": lv_wall_thickness,
-                    "rv_offset_x": rv_offset_x,
-                    "lv_radius_x": lv_radius_x,
-                    "lv_radius_y": lv_radius_y,
-                    "lv_radius_z": lv_radius_z,
-                    "rv_radius_x": rv_radius_x,
-                    "rv_radius_y": rv_radius_y,
-                    "rv_radius_z": rv_radius_z,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "mesh_type": "biv_ellipsoid",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -377,6 +387,7 @@ def biv_ellipsoid(
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
     comm.barrier()
+    fibers = {}
     if create_fibers:
         try:
             import ldrb
@@ -405,7 +416,19 @@ def biv_ellipsoid(
             functions=(system.f0, system.s0, system.n0),
             outdir=outdir,
         )
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        info=info,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
     geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
 
@@ -480,31 +503,32 @@ def lv_ellipsoid(
 
     outdir = Path(outdir)
     mesh_name = outdir / "lv_ellipsoid.msh"
+    info = {
+        "r_short_endo": r_short_endo,
+        "r_short_epi": r_short_epi,
+        "r_long_endo": r_long_endo,
+        "r_long_epi": r_long_epi,
+        "psize_ref": psize_ref,
+        "mu_apex_endo": mu_apex_endo,
+        "mu_base_endo": mu_base_endo,
+        "mu_apex_epi": mu_apex_epi,
+        "mu_base_epi": mu_base_epi,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "aha": aha,
+        "dmu_factor": dmu_factor,
+        "mesh_type": "lv_ellipsoid",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "r_short_endo": r_short_endo,
-                    "r_short_epi": r_short_epi,
-                    "r_long_endo": r_long_endo,
-                    "r_long_epi": r_long_epi,
-                    "psize_ref": psize_ref,
-                    "mu_apex_endo": mu_apex_endo,
-                    "mu_base_endo": mu_base_endo,
-                    "mu_apex_epi": mu_apex_epi,
-                    "mu_base_epi": mu_base_epi,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "aha": aha,
-                    "dmu_factor": dmu_factor,
-                    "mesh_type": "lv_ellipsoid",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -527,6 +551,7 @@ def lv_ellipsoid(
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
 
+    kwargs = {"cfun": geometry.cfun}
     if aha:
         from .aha import lv_aha
 
@@ -555,6 +580,8 @@ def lv_ellipsoid(
             vt=geometry.vfun,
         )
 
+        kwargs["cfun"] = aha_func
+
         for k, v in geometry.markers.items():
             # Add all markers except the volume markers
             if v[0] != 3:
@@ -570,7 +597,7 @@ def lv_ellipsoid(
     if create_fibers:
         from .fibers.lv_ellipsoid import create_microstructure
 
-        create_microstructure(
+        system = create_microstructure(
             mesh=geometry.mesh,
             ffun=geometry.ffun,
             markers=geometry.markers,
@@ -583,7 +610,20 @@ def lv_ellipsoid(
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
         )
+        kwargs["f0"] = system.f0
+        kwargs["s0"] = system.s0
+        kwargs["n0"] = system.n0
 
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=markers,
+        info=info,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **kwargs,
+    )
     geo = Geometry.from_folder(comm=comm, folder=outdir)
 
     return geo
@@ -642,6 +682,16 @@ def slab_dolfinx(
     with dolfinx.io.XDMFFile(comm, outdir / "mesh.xdmf", "w") as xdmf:
         xdmf.write_mesh(mesh)
         xdmf.write_meshtags(ft, mesh.geometry)
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=mesh,
+        markers=markers,
+        cfun=None,
+        ffun=ft.indices,
+        efun=None,
+        vfun=None,
+    )
 
     return utils.GMshGeometry(
         mesh=mesh,
@@ -704,24 +754,25 @@ def slab(
     """
     outdir = Path(outdir)
     mesh_name = outdir / "slab.msh"
+    info = {
+        "Lx": lx,
+        "Ly": ly,
+        "Lz": lz,
+        "dx": dx,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "mesh_type": "slab",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "Lx": lx,
-                    "Ly": ly,
-                    "Lz": lz,
-                    "dx": dx,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "mesh_type": "slab",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -755,10 +806,11 @@ def slab(
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
 
+    fibers = {}
     if create_fibers:
         from .fibers.slab import create_microstructure
 
-        create_microstructure(
+        system = create_microstructure(
             mesh=geometry.mesh,
             ffun=geometry.ffun,
             markers=geometry.markers,
@@ -767,7 +819,18 @@ def slab(
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
         )
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
     geo = Geometry.from_folder(comm=comm, folder=outdir)
     return geo
 
@@ -818,23 +881,24 @@ def slab_in_bath(
 
     outdir = Path(outdir)
     mesh_name = outdir / "slab_in_bath.msh"
+    info = {
+        "lx": lx,
+        "ly": ly,
+        "lz": lz,
+        "bx": bx,
+        "by": by,
+        "bz": bz,
+        "dx": dx,
+        "mesh_type": "slab-bath",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "lx": lx,
-                    "ly": ly,
-                    "lz": lz,
-                    "bx": bx,
-                    "by": by,
-                    "bz": bz,
-                    "dx": dx,
-                    "mesh_type": "slab-bath",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -857,7 +921,18 @@ def slab_in_bath(
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
+    comm.barrier()
 
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+    )
     geo = Geometry.from_folder(comm=comm, folder=outdir)
 
     return geo
@@ -915,25 +990,26 @@ def cylinder(
 
     outdir = Path(outdir)
     mesh_name = outdir / "cylinder.msh"
+    info = {
+        "r_inner": r_inner,
+        "r_outer": r_outer,
+        "height": height,
+        "char_length": char_length,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "aha": aha,
+        "mesh_type": "cylinder",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "r_inner": r_inner,
-                    "r_outer": r_outer,
-                    "height": height,
-                    "char_length": char_length,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "aha": aha,
-                    "mesh_type": "cylinder",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -955,10 +1031,11 @@ def cylinder(
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
 
+    fibers = {}
     if create_fibers:
         from .fibers.cylinder import create_microstructure
 
-        create_microstructure(
+        system = create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
@@ -967,6 +1044,18 @@ def cylinder(
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
         )
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
 
@@ -1035,27 +1124,28 @@ def cylinder_racetrack(
 
     outdir = Path(outdir)
     mesh_name = outdir / "cylinder_racetrack.msh"
+    info = {
+        "r_inner": r_inner,
+        "r_outer": r_outer,
+        "height": height,
+        "inner_flat_face_distance": inner_flat_face_distance,
+        "outer_flat_face_distance": outer_flat_face_distance,
+        "char_length": char_length,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "aha": aha,
+        "mesh_type": "cylinder_racetrack",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "r_inner": r_inner,
-                    "r_outer": r_outer,
-                    "height": height,
-                    "inner_flat_face_distance": inner_flat_face_distance,
-                    "outer_flat_face_distance": outer_flat_face_distance,
-                    "char_length": char_length,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "aha": aha,
-                    "mesh_type": "cylinder",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -1079,10 +1169,11 @@ def cylinder_racetrack(
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
 
+    fibers = {}
     if create_fibers:
         from .fibers.cylinder_flat import create_microstructure
 
-        create_microstructure(
+        system = create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
@@ -1094,6 +1185,19 @@ def cylinder_racetrack(
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
         )
+
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
 
@@ -1162,27 +1266,28 @@ def cylinder_D_shaped(
 
     outdir = Path(outdir)
     mesh_name = outdir / "cylinder_D_shaped.msh"
+    info = {
+        "r_inner": r_inner,
+        "r_outer": r_outer,
+        "height": height,
+        "inner_flat_face_distance": inner_flat_face_distance,
+        "outer_flat_face_distance": outer_flat_face_distance,
+        "char_length": char_length,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "aha": aha,
+        "mesh_type": "cylinder_D_shaped",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
 
         with open(outdir / "info.json", "w") as f:
             json.dump(
-                {
-                    "r_inner": r_inner,
-                    "r_outer": r_outer,
-                    "height": height,
-                    "inner_flat_face_distance": inner_flat_face_distance,
-                    "outer_flat_face_distance": outer_flat_face_distance,
-                    "char_length": char_length,
-                    "create_fibers": create_fibers,
-                    "fiber_angle_endo": fiber_angle_endo,
-                    "fiber_angle_epi": fiber_angle_epi,
-                    "fiber_space": fiber_space,
-                    "aha": aha,
-                    "mesh_type": "cylinder",
-                    "cardiac_geometry_version": __version__,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                },
+                info,
                 f,
                 indent=2,
                 default=utils.json_serial,
@@ -1206,10 +1311,11 @@ def cylinder_D_shaped(
         with open(outdir / "markers.json", "w") as f:
             json.dump(geometry.markers, f, default=utils.json_serial)
 
+    fibers = {}
     if create_fibers:
         from .fibers.cylinder_flat import create_microstructure
 
-        create_microstructure(
+        system = create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
@@ -1221,6 +1327,19 @@ def cylinder_D_shaped(
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
         )
+
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
 

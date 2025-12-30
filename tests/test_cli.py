@@ -194,7 +194,7 @@ def test_rotate(script, fiber_space, tmp_path: Path):
     res = runner.invoke(script, args)
     assert res.exit_code == 0
     path_rotated = path / "rotated"
-    args = [
+    args_rot = [
         path_orig.as_posix(),
         "-o",
         path_rotated.as_posix(),
@@ -203,7 +203,7 @@ def test_rotate(script, fiber_space, tmp_path: Path):
         "1.0",
         "0.0",
     ]
-    res = runner.invoke(cli.rotate, args)
+    res = runner.invoke(cli.rotate, args_rot)
 
     assert res.exit_code == 0
     geo_rotated = Geometry.from_folder(comm=comm, folder=path_rotated)
