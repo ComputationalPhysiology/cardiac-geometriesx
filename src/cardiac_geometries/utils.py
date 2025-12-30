@@ -381,9 +381,7 @@ def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
 
 
 @lru_cache
-def array2functionspace(
-    mesh: dolfinx.mesh.Mesh, arr: np.ndarray, id: int
-) -> dolfinx.fem.functionspace:
+def array2functionspace(mesh: dolfinx.mesh.Mesh, arr: np.ndarray) -> dolfinx.fem.functionspace:
     el = array2element(arr)
     return dolfinx.fem.functionspace(mesh, el)
 
@@ -519,29 +517,33 @@ def save_mesh_to_xdmf(
     # Save tags to xdmf
     with dolfinx.io.XDMFFile(comm, fname, "w") as xdmf:
         xdmf.write_mesh(mesh)
-        xdmf.write_meshtags(
-            ct,
-            mesh.geometry,
-            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
-        )
-        mesh.topology.create_connectivity(2, 3)
-        xdmf.write_meshtags(
-            ft,
-            mesh.geometry,
-            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
-        )
-        mesh.topology.create_connectivity(1, 3)
-        xdmf.write_meshtags(
-            et,
-            mesh.geometry,
-            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
-        )
-        mesh.topology.create_connectivity(0, 3)
-        xdmf.write_meshtags(
-            vt,
-            mesh.geometry,
-            geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
-        )
+        if ct is not None:
+            xdmf.write_meshtags(
+                ct,
+                mesh.geometry,
+                geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
+            )
+        if ft is not None:
+            mesh.topology.create_connectivity(2, 3)
+            xdmf.write_meshtags(
+                ft,
+                mesh.geometry,
+                geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
+            )
+        if et is not None:
+            mesh.topology.create_connectivity(1, 3)
+            xdmf.write_meshtags(
+                et,
+                mesh.geometry,
+                geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
+            )
+        if vt is not None:
+            mesh.topology.create_connectivity(0, 3)
+            xdmf.write_meshtags(
+                vt,
+                mesh.geometry,
+                geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
+            )
 
 
 def create_xdmf_pointcloud(filename: Path, us: typing.Sequence[dolfinx.fem.Function]) -> None:

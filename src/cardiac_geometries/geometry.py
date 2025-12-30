@@ -19,6 +19,99 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
+def info_path(path: Path) -> Path:
+    return path.parent / f"info_{path.stem}.json"
+
+
+def markers_path(path: Path) -> Path:
+    return path.parent / f"markers_{path.stem}.json"
+
+
+def microstructure_path(path: Path) -> Path:
+    return path.parent / f"microstructure_{path.stem}.json"
+
+
+def save_geometry(
+    path: Path,
+    mesh: dolfinx.mesh.Mesh,
+    markers: dict[str, tuple[int, int]],
+    info: dict[str, Any] | None = None,
+    cfun: dolfinx.mesh.MeshTags | None = None,
+    ffun: dolfinx.mesh.MeshTags | None = None,
+    efun: dolfinx.mesh.MeshTags | None = None,
+    vfun: dolfinx.mesh.MeshTags | None = None,
+    f0: dolfinx.fem.Function | None = None,
+    s0: dolfinx.fem.Function | None = None,
+    n0: dolfinx.fem.Function | None = None,
+) -> None:
+    path = Path(path)
+
+    shutil.rmtree(path, ignore_errors=True)
+    mesh.comm.barrier()
+    adios4dolfinx.write_mesh(mesh=mesh, filename=path)
+
+    if mesh.comm.rank == 0:
+        markers_path(path).write_text(json.dumps(markers, indent=4, default=utils.json_serial))
+        if info is not None:
+            info_path(path).write_text(json.dumps(info, indent=4, default=utils.json_serial))
+
+    if cfun is not None:
+        adios4dolfinx.write_meshtags(
+            meshtags=cfun,
+            mesh=mesh,
+            filename=path,
+            meshtag_name="Cell tags",
+        )
+    if ffun is not None:
+        adios4dolfinx.write_meshtags(
+            meshtags=ffun,
+            mesh=mesh,
+            filename=path,
+            meshtag_name="Facet tags",
+        )
+    if efun is not None:
+        adios4dolfinx.write_meshtags(
+            meshtags=efun,
+            mesh=mesh,
+            filename=path,
+            meshtag_name="Edge tags",
+        )
+    if vfun is not None:
+        adios4dolfinx.write_meshtags(
+            meshtags=vfun,
+            mesh=mesh,
+            filename=path,
+            meshtag_name="Vertex tags",
+        )
+
+    if f0 is not None:
+        el = f0.ufl_element()
+        arr = utils.element2array(el)
+        if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
+            "2.10.2"
+        ):
+            # This is broken in adios for numpy >= 2.11
+            adios4dolfinx.write_attributes(
+                comm=mesh.comm,
+                filename=path,
+                name="function_space",
+                attributes={k: arr for k in ("f0", "s0", "n0")},
+            )
+
+        functions = {f for f in (f0, s0, n0) if f is not None}
+        attributes = {f.name: utils.element2array(f.ufl_element()) for f in functions}
+        if mesh.comm.rank == 0:
+            microstructure_path(path).write_text(
+                json.dumps(attributes, indent=4, default=utils.json_serial)
+            )
+        adios4dolfinx.write_function(u=f0, filename=path, name="f0")
+    if s0 is not None:
+        adios4dolfinx.write_function(u=s0, filename=path, name="s0")
+    if n0 is not None:
+        adios4dolfinx.write_function(u=n0, filename=path, name="n0")
+    mesh.comm.barrier()
+
+
 @dataclass
 class Geometry:
     mesh: dolfinx.mesh.Mesh
@@ -42,71 +135,18 @@ class Geometry:
             The file will be created if it does not exist, or overwritten if it does.
         """
         path = Path(path)
-
-        shutil.rmtree(path, ignore_errors=True)
-        self.mesh.comm.barrier()
-        adios4dolfinx.write_mesh(mesh=self.mesh, filename=path)
-
-        if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
-            "2.10.2"
-        ):
-            # This is broken in adios < 2.10.2 and numpy >= 2.11
-            adios4dolfinx.write_attributes(
-                comm=self.mesh.comm,
-                filename=path,
-                name="markers",
-                attributes={k: np.array(v, dtype=np.uint8) for k, v in self.markers.items()},
-            )
-
-        if self.cfun is not None:
-            adios4dolfinx.write_meshtags(
-                meshtags=self.cfun,
-                mesh=self.mesh,
-                filename=path,
-                meshtag_name="Cell tags",
-            )
-        if self.ffun is not None:
-            adios4dolfinx.write_meshtags(
-                meshtags=self.ffun,
-                mesh=self.mesh,
-                filename=path,
-                meshtag_name="Facet tags",
-            )
-        # if self.efun is not None:
-        #     adios4dolfinx.write_meshtags(
-        #         meshtags=self.efun,
-        #         mesh=self.mesh,
-        #         filename=path,
-        #         meshtag_name="Edge tags",
-        #     )
-        # if self.vfun is not None:
-        #     adios4dolfinx.write_meshtags(
-        #         meshtags=self.vfun,
-        #         mesh=self.mesh,
-        #         filename=path,
-        #         meshtag_name="Vertex tags",
-        #     )
-
-        if self.f0 is not None:
-            el = self.f0.ufl_element()
-            arr = utils.element2array(el)
-            if Version(np.__version__) <= Version("2.11") or Version(adios2.__version__) >= Version(
-                "2.10.2"
-            ):
-                # This is broken in adios for numpy >= 2.11
-                adios4dolfinx.write_attributes(
-                    comm=self.mesh.comm,
-                    filename=path,
-                    name="function_space",
-                    attributes={k: arr for k in ("f0", "s0", "n0")},
-                )
-            adios4dolfinx.write_function(u=self.f0, filename=path, name="f0")
-        if self.s0 is not None:
-            adios4dolfinx.write_function(u=self.s0, filename=path, name="s0")
-        if self.n0 is not None:
-            adios4dolfinx.write_function(u=self.n0, filename=path, name="n0")
-
-        self.mesh.comm.barrier()
+        save_geometry(
+            path=path,
+            mesh=self.mesh,
+            markers=self.markers,
+            cfun=self.cfun,
+            ffun=self.ffun,
+            efun=self.efun,
+            vfun=self.vfun,
+            f0=self.f0,
+            s0=self.s0,
+            n0=self.n0,
+        )
 
     def save_folder(self, folder: str | Path) -> None:
         """Save the geometry to a folder containing mesh and markers files.
@@ -141,6 +181,18 @@ class Geometry:
             mesh=self.mesh,
             functions=[f for f in (self.f0, self.s0, self.n0) if f is not None],
             outdir=folder,
+        )
+        save_geometry(
+            path=folder / "geometry.bp",
+            mesh=self.mesh,
+            markers=self.markers,
+            cfun=self.cfun,
+            ffun=self.ffun,
+            efun=self.efun,
+            vfun=self.vfun,
+            f0=self.f0,
+            s0=self.s0,
+            n0=self.n0,
         )
         logger.info(f"Geometry saved to {folder}")
 
@@ -266,7 +318,6 @@ class Geometry:
         cls,
         comm: MPI.Intracomm,
         path: str | Path,
-        function_space_data: dict[str, np.ndarray] | None = None,
     ) -> "Geometry":
         """Read geometry from a file using adios4dolfinx.
 
@@ -276,9 +327,6 @@ class Geometry:
             The MPI communicator to use for reading the mesh.
         path : str | Path
             The path to the file containing the geometry data.
-        function_space_data : dict[str, np.ndarray] | None, optional
-            A dictionary containing function space data for the functions to be read.
-            If None, it will be read from the file.
 
         Returns
         -------
@@ -287,9 +335,30 @@ class Geometry:
         """
 
         path = Path(path)
+        if not path.exists():
+            raise ValueError(f"File {path} does not exist")
+
+        if markers_path(path).exists():
+            if comm.rank == 0:
+                markers = json.loads(markers_path(path).read_text())
+            else:
+                markers = {}
+            markers = comm.bcast(markers, root=0)
+        else:
+            markers = {}
+
+        if info_path(path).exists():
+            if comm.rank == 0:
+                info = json.loads(info_path(path).read_text())
+            else:
+                info = {}
+            info = comm.bcast(info, root=0)
+        else:
+            info = {}
 
         mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
-        markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
+
+        # markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
         tags = {}
         for name, meshtag_name in (
             ("cfun", "Cell tags"),
@@ -301,14 +370,24 @@ class Geometry:
                 tags[name] = adios4dolfinx.read_meshtags(
                     mesh=mesh, meshtag_name=meshtag_name, filename=path
                 )
-            except KeyError:
+            except (KeyError, IndexError):
+                print(name, "not found in", path)
                 tags[name] = None
 
         functions = {}
-        if function_space_data is None:
-            function_space_data = adios4dolfinx.read_attributes(
-                comm=comm, filename=path, name="function_space"
-            )
+        # if function_space_data is None:
+        #     function_space_data = adios4dolfinx.read_attributes(
+        #         comm=comm, filename=path, name="function_space"
+        #     )
+        if microstructure_path(path).exists():
+            if comm.rank == 0:
+                function_space_data = json.loads(microstructure_path(path).read_text())
+            else:
+                function_space_data = {}
+            function_space_data = comm.bcast(function_space_data, root=0)
+        else:
+            function_space_data = {}
+
         assert isinstance(function_space_data, dict), "function_space_data must be a dictionary"
         for name, el in function_space_data.items():
             element = utils.array2element(el)
@@ -324,6 +403,7 @@ class Geometry:
         return cls(
             mesh=mesh,
             markers=markers,
+            info=info,
             **functions,
             **tags,
         )
@@ -357,6 +437,19 @@ class Geometry:
         """
         folder = Path(folder)
         logger.info(f"Reading geometry from {folder}")
+        if not folder.exists():
+            raise ValueError(f"Folder {folder} does not exist")
+
+        if (folder / "geometry.bp").exists():
+            logger.debug("Reading geometry from geometry.bp")
+            return cls.from_file(comm=comm, path=folder / "geometry.bp")
+
+        logger.warning(
+            "geometry.bp not found, reading mesh and microstructure separately. "
+            "This may lead to inconsistent dof numbering in the mesh and microstructure. "
+            "Try deleting the folder and regenerating the mesh."
+        )
+
         # Read mesh
         if (folder / "mesh.xdmf").exists():
             logger.debug("Reading mesh")
@@ -387,34 +480,20 @@ class Geometry:
         functions = {}
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
-            micro_mesh = adios4dolfinx.read_mesh(comm=comm, filename=microstructure_path)
-            print("Micro mesh is mesh", micro_mesh is mesh)
             logger.debug("Reading microstructure")
             # function_space = adios4dolfinx.read_attributes(
             #     comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
             # )
             for name, el in microstructure.items():
                 logger.debug(f"Reading {name}")
-                V_micro = utils.array2functionspace(micro_mesh, tuple(el), id=id(micro_mesh))
-                f_micro = dolfinx.fem.Function(V_micro, name=name)
+
                 V = utils.array2functionspace(mesh, tuple(el), id=id(mesh))
                 f = dolfinx.fem.Function(V, name=name)
                 try:
-                    adios4dolfinx.read_function(u=f_micro, filename=microstructure_path, name=name)
+                    adios4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
                 except KeyError:
                     continue
                 else:
-                    # mesh_cell_map = mesh.topology.index_map(mesh.topology.dim)
-                    # num_cells_on_proc = mesh_cell_map.size_local + mesh_cell_map.num_ghosts
-                    # cells = np.arange(num_cells_on_proc, dtype=np.int32)
-                    # interpolation_data = dolfinx.fem.create_interpolation_data(V, V_micro, cells)
-                    # f.interpolate_nonmatching(
-                    #   f_micro, cells, interpolation_data=interpolation_data
-                    # )
-
-                    # Interpolating does not work for quad functions.
-                    # Assuming same mesh partitioning.
-                    f.x.array[:] = f_micro.x.array[:]
                     functions[name] = f
 
         if (folder / "info.json").exists():
