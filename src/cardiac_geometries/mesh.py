@@ -14,7 +14,6 @@ import numpy as np
 from structlog import get_logger
 
 from . import utils
-from .fibers.utils import save_microstructure
 from .geometry import Geometry, save_geometry
 
 meta = metadata("cardiac-geometriesx")
@@ -235,11 +234,6 @@ def ukb(
             fiber_space=fiber_space,
         )
 
-        save_microstructure(
-            mesh=geometry.mesh,
-            functions=(system.f0, system.s0, system.n0),
-            outdir=outdir,
-        )
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
         for k, v in system._asdict().items():
@@ -411,11 +405,6 @@ def biv_ellipsoid(
             fiber_space=fiber_space,
         )
 
-        save_microstructure(
-            mesh=geometry.mesh,
-            functions=(system.f0, system.s0, system.n0),
-            outdir=outdir,
-        )
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(

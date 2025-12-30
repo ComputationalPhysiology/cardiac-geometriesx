@@ -120,6 +120,6 @@ def create_microstructure(
     )
 
     if outdir is not None:
-        utils.save_microstructure(mesh, system, outdir)
+        utils.save_microstructure(mesh, system, path=Path(outdir) / "geometry.bp")
 
     return system
