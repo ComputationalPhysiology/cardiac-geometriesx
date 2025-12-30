@@ -275,17 +275,19 @@ class Geometry:
             outdir.mkdir(parents=True, exist_ok=True)
             with dolfinx.io.XDMFFile(new_mesh.comm, outdir / "mesh.xdmf", "w") as xdmf:
                 xdmf.write_mesh(new_mesh)
-                xdmf.write_meshtags(
-                    cfun,
-                    new_mesh.geometry,
-                    geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{new_mesh.name}']/Geometry",
-                )
-                mesh.topology.create_connectivity(2, 3)
-                xdmf.write_meshtags(
-                    ffun,
-                    new_mesh.geometry,
-                    geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{new_mesh.name}']/Geometry",
-                )
+                if cfun is not None:
+                    xdmf.write_meshtags(
+                        cfun,
+                        new_mesh.geometry,
+                        geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{new_mesh.name}']/Geometry",
+                    )
+                if ffun is not None:
+                    mesh.topology.create_connectivity(2, 3)
+                    xdmf.write_meshtags(
+                        ffun,
+                        new_mesh.geometry,
+                        geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{new_mesh.name}']/Geometry",
+                    )
 
         if self.info is not None:
             info = self.info.copy()
@@ -356,7 +358,9 @@ class Geometry:
         else:
             info = {}
 
-        mesh = adios4dolfinx.read_mesh(comm=comm, filename=path)
+        mesh = adios4dolfinx.read_mesh(
+            comm=comm, filename=path, ghost_mode=dolfinx.mesh.GhostMode.none
+        )
 
         # markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
         tags = {}
@@ -487,7 +491,7 @@ class Geometry:
             for name, el in microstructure.items():
                 logger.debug(f"Reading {name}")
 
-                V = utils.array2functionspace(mesh, tuple(el), id=id(mesh))
+                V = utils.array2functionspace(mesh, tuple(el))
                 f = dolfinx.fem.Function(V, name=name)
                 try:
                     adios4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
