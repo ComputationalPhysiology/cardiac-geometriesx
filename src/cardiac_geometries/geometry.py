@@ -300,7 +300,7 @@ class Geometry:
         cls,
         comm: MPI.Intracomm,
         path: str | Path,
-        ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+        ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     ) -> "Geometry":
         """Read geometry from a file using adios4dolfinx.
 
@@ -312,7 +312,7 @@ class Geometry:
             The path to the file containing the geometry data.
         ghost_mode : dolfinx.mesh.GhostMode, optional
             The ghost mode to use when reading the mesh, by default
-            dolfinx.mesh.GhostMode.shared_facet.
+            dolfinx.mesh.GhostMode.none.
             Note that if you need to refine the mesh later, you should
             use dolfinx.mesh.GhostMode.none.
 
@@ -403,7 +403,7 @@ class Geometry:
         cls,
         comm: MPI.Intracomm,
         folder: str | Path,
-        ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+        ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     ) -> "Geometry":
         """Read geometry from a folder containing mesh and markers files.
 
@@ -415,7 +415,7 @@ class Geometry:
             The path to the folder containing the geometry data.
         ghost_mode : dolfinx.mesh.GhostMode, optional
             The ghost mode to use when reading the mesh, by default
-            dolfinx.mesh.GhostMode.shared_facet.
+            dolfinx.mesh.GhostMode.none.
             Note that if you need to refine the mesh later, you should
             use dolfinx.mesh.GhostMode.none.
 

@@ -414,7 +414,7 @@ class GMshGeometry(NamedTuple):
 def read_mesh(
     comm,
     filename: str | Path,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> tuple[dolfinx.mesh.Mesh, dict[str, dolfinx.mesh.MeshTags]]:
     tags = {}
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
@@ -438,7 +438,7 @@ def gmsh2dolfin(
     comm: MPI.Intracomm,
     msh_file,
     rank: int = 0,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent

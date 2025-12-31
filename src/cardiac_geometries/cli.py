@@ -122,7 +122,7 @@ def app():
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -283,7 +283,7 @@ def ukb(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -308,7 +308,7 @@ def lv_ellipsoid(
     fiber_space: str = "P_1",
     aha: bool = False,
     dmu_factor: float = 1 / 4,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -467,7 +467,7 @@ def lv_ellipsoid(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -494,7 +494,7 @@ def biv_ellipsoid(
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
     verbose: bool = False,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     init_logging(verbose=verbose)
     outdir = Path(outdir)
@@ -593,7 +593,7 @@ def biv_ellipsoid(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -611,7 +611,7 @@ def slab(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -693,7 +693,7 @@ def slab(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -710,7 +710,7 @@ def slab_in_bath(
     by: float = 0.0,
     bz: float = 0.1,
     dx: float = 0.01,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -798,7 +798,7 @@ def slab_in_bath(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -816,7 +816,7 @@ def cylinder(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -919,7 +919,7 @@ def cylinder(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -939,7 +939,7 @@ def cylinder_racetrack(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1044,7 +1044,7 @@ def cylinder_racetrack(
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -1064,7 +1064,7 @@ def cylinder_D_shaped(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1143,7 +1143,7 @@ def gui():
 )
 @click.option(
     "--ghost-mode",
-    default=dolfinx.mesh.GhostMode.shared_facet,
+    default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
         dolfinx.mesh.GhostMode,
         case_sensitive=False,
@@ -1157,7 +1157,7 @@ def rotate(
     target_normal: list[float],
     base_marker: str = "BASE",
     verbose: bool = False,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     from .geometry import Geometry
 
