@@ -412,11 +412,13 @@ class GMshGeometry(NamedTuple):
 
 
 def read_mesh(
-    comm, filename: str | Path
+    comm,
+    filename: str | Path,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> tuple[dolfinx.mesh.Mesh, dict[str, dolfinx.mesh.MeshTags]]:
     tags = {}
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
-        mesh = xdmf.read_mesh(name="Mesh", ghost_mode=dolfinx.mesh.GhostMode.none)
+        mesh = xdmf.read_mesh(name="Mesh", ghost_mode=ghost_mode)
         for var, name, dim in [
             ("cfun", "Cell tags", mesh.topology.dim),
             ("ffun", "Facet tags", mesh.topology.dim - 1),
@@ -432,13 +434,19 @@ def read_mesh(
     return mesh, tags
 
 
-def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
+def gmsh2dolfin(
+    comm: MPI.Intracomm,
+    msh_file,
+    rank: int = 0,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
     outdir.mkdir(parents=True, exist_ok=True)
+    partitioner = dolfinx.cpp.mesh.create_cell_partitioner(ghost_mode)
 
     if Version(dolfinx.__version__) >= Version("0.10.0"):
-        mesh_data = gmshio.read_from_msh(comm=comm, filename=msh_file)
+        mesh_data = gmshio.read_from_msh(comm=comm, filename=msh_file, partitioner=partitioner)
         mesh = mesh_data.mesh
         markers_ = mesh_data.physical_groups
         ct = mesh_data.cell_tags
@@ -482,14 +490,14 @@ def gmsh2dolfin(comm: MPI.Intracomm, msh_file, rank: int = 0) -> GMshGeometry:
             gmsh.initialize()
             gmsh.model.add("Mesh from file")
             gmsh.merge(str(msh_file))
-            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0)
+            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0, partitioner=partitioner)
             markers = {
                 gmsh.model.getPhysicalName(*v): tuple(reversed(v))
                 for v in gmsh.model.getPhysicalGroups()
             }
             gmsh.finalize()
         else:
-            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0)
+            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0, partitioner=partitioner)
             markers = {}
 
         markers = comm.bcast(markers, root=rank)

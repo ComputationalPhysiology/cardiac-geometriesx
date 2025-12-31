@@ -5,6 +5,7 @@ from pathlib import Path
 
 from mpi4py import MPI
 
+import dolfinx
 import rich_click as click
 
 from . import mesh
@@ -119,6 +120,16 @@ def app():
     help="If True create rule-based fibers",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def ukb(
     outdir: Path | str,
     mode: int = -1,
@@ -131,11 +142,12 @@ def ukb(
     fiber_space: str = "P_1",
     clipped: bool = False,
     create_fibers: bool = True,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.ukb(
+    mesh.ukb(
         outdir=outdir,
         mode=mode,
         std=std,
@@ -147,8 +159,8 @@ def ukb(
         fiber_space=fiber_space,
         clipped=clipped,
         create_fibers=create_fibers,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "ukb.bp")
 
 
 @click.command(help="Create LV ellipsoidal geometry")
@@ -269,6 +281,16 @@ def ukb(
     help="Factor for adjusting the thickness of the AHA segments",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def lv_ellipsoid(
     outdir: Path,
     r_short_endo: float = 7.0,
@@ -286,11 +308,12 @@ def lv_ellipsoid(
     fiber_space: str = "P_1",
     aha: bool = False,
     dmu_factor: float = 1 / 4,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.lv_ellipsoid(
+    mesh.lv_ellipsoid(
         outdir=outdir,
         r_short_endo=r_short_endo,
         r_short_epi=r_short_epi,
@@ -307,8 +330,8 @@ def lv_ellipsoid(
         fiber_space=fiber_space,
         aha=aha,
         dmu_factor=dmu_factor,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "lv_ellipsoid.bp")
 
 
 @click.command(help="Create BiV ellipsoidal geometry")
@@ -442,6 +465,16 @@ def lv_ellipsoid(
     help="Enable verbose output",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def biv_ellipsoid(
     outdir: Path,
     char_length: float = 0.4,  # cm
@@ -461,12 +494,13 @@ def biv_ellipsoid(
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     init_logging(verbose=verbose)
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.biv_ellipsoid(
+    mesh.biv_ellipsoid(
         outdir=outdir,
         char_length=char_length,
         base_cut_z=base_cut_z,
@@ -485,8 +519,8 @@ def biv_ellipsoid(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         verbose=verbose,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "biv_ellipsoid.bp")
 
 
 @click.command(help="Create slab geometry")
@@ -557,6 +591,16 @@ def biv_ellipsoid(
     help="Function space for fibers of the form family_degree",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def slab(
     outdir: Path,
     lx: float = 20.0,
@@ -567,11 +611,12 @@ def slab(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.slab(
+    mesh.slab(
         outdir=outdir,
         lx=lx,
         ly=ly,
@@ -581,8 +626,8 @@ def slab(
         fiber_angle_endo=fiber_angle_endo,
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "slab.bp")
 
 
 @click.command(help="Create slab in bath geometry")
@@ -646,6 +691,16 @@ def slab(
     help="Element size",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def slab_in_bath(
     outdir: Path,
     lx: float = 1.0,
@@ -655,11 +710,12 @@ def slab_in_bath(
     by: float = 0.0,
     bz: float = 0.1,
     dx: float = 0.01,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.slab_in_bath(
+    mesh.slab_in_bath(
         outdir=outdir,
         lx=lx,
         ly=ly,
@@ -668,8 +724,8 @@ def slab_in_bath(
         by=by,
         bz=bz,
         dx=dx,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "slab_in_bath.bp")
 
 
 @click.command(help="Create cylinder geometry")
@@ -740,6 +796,16 @@ def slab_in_bath(
     help="Function space for fibers of the form family_degree",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def cylinder(
     outdir: Path,
     char_length: float = 10.0,
@@ -750,11 +816,12 @@ def cylinder(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.cylinder(
+    mesh.cylinder(
         outdir=outdir,
         r_inner=r_inner,
         r_outer=r_outer,
@@ -764,8 +831,8 @@ def cylinder(
         fiber_angle_endo=fiber_angle_endo,
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "cylinder.bp")
 
 
 @click.command(help="Create racetrack cylinder geometry")
@@ -850,6 +917,16 @@ def cylinder(
     help="Function space for fibers of the form family_degree",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def cylinder_racetrack(
     outdir: Path,
     char_length: float = 10.0,
@@ -862,11 +939,12 @@ def cylinder_racetrack(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.cylinder_racetrack(
+    mesh.cylinder_racetrack(
         outdir=outdir,
         r_inner=r_inner,
         r_outer=r_outer,
@@ -878,8 +956,8 @@ def cylinder_racetrack(
         fiber_angle_endo=fiber_angle_endo,
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "cylinder_racetrack.bp")
 
 
 @click.command(help="Create D-shaped cylinder geometry")
@@ -964,6 +1042,16 @@ def cylinder_racetrack(
     help="Function space for fibers of the form family_degree",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def cylinder_D_shaped(
     outdir: Path,
     char_length: float = 10.0,
@@ -976,11 +1064,12 @@ def cylinder_D_shaped(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
 
-    geo = mesh.cylinder_D_shaped(
+    mesh.cylinder_D_shaped(
         outdir=outdir,
         r_inner=r_inner,
         r_outer=r_outer,
@@ -992,8 +1081,8 @@ def cylinder_D_shaped(
         fiber_angle_endo=fiber_angle_endo,
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
+        ghost_mode=ghost_mode,
     )
-    geo.save(outdir / "cylinder_D_shaped.bp")
 
 
 @click.command("gui")
@@ -1052,19 +1141,30 @@ def gui():
     help="Enable verbose output",
     show_default=True,
 )
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.shared_facet,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
 def rotate(
     folder: Path,
     outdir: Path,
     target_normal: list[float],
     base_marker: str = "BASE",
     verbose: bool = False,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ):
     from .geometry import Geometry
 
     init_logging(verbose=verbose)
     comm = MPI.COMM_WORLD
 
-    geo = Geometry.from_folder(comm=comm, folder=folder)
+    geo = Geometry.from_folder(comm=comm, folder=folder, ghost_mode=ghost_mode)
     geo.rotate(target_normal=target_normal, base_marker=base_marker)
     geo.save_folder(Path(outdir))
 

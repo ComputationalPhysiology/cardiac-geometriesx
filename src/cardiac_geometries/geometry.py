@@ -191,7 +191,11 @@ class Geometry:
         """Facet normal vector for the mesh."""
         return ufl.FacetNormal(self.mesh)
 
-    def refine(self, n=1, outdir: Path | None = None) -> "Geometry":
+    def refine(
+        self,
+        n=1,
+        outdir: Path | None = None,
+    ) -> "Geometry":
         """
         Refine the mesh and transfer the meshtags to new geometry.
         Also regenerate fibers if `self.info` is found.
@@ -296,6 +300,7 @@ class Geometry:
         cls,
         comm: MPI.Intracomm,
         path: str | Path,
+        ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
     ) -> "Geometry":
         """Read geometry from a file using adios4dolfinx.
 
@@ -305,13 +310,17 @@ class Geometry:
             The MPI communicator to use for reading the mesh.
         path : str | Path
             The path to the file containing the geometry data.
+        ghost_mode : dolfinx.mesh.GhostMode, optional
+            The ghost mode to use when reading the mesh, by default
+            dolfinx.mesh.GhostMode.shared_facet.
+            Note that if you need to refine the mesh later, you should
+            use dolfinx.mesh.GhostMode.none.
 
         Returns
         -------
         Geometry
             An instance of the Geometry class containing the mesh, markers, and functions.
         """
-
         path = Path(path)
         if not path.exists():
             raise ValueError(f"File {path} does not exist")
@@ -335,7 +344,9 @@ class Geometry:
             info = {}
 
         mesh = adios4dolfinx.read_mesh(
-            comm=comm, filename=path, ghost_mode=dolfinx.mesh.GhostMode.none
+            comm=comm,
+            filename=path,
+            ghost_mode=ghost_mode,
         )
 
         # markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
@@ -388,7 +399,12 @@ class Geometry:
         )
 
     @classmethod
-    def from_folder(cls, comm: MPI.Intracomm, folder: str | Path) -> "Geometry":
+    def from_folder(
+        cls,
+        comm: MPI.Intracomm,
+        folder: str | Path,
+        ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ) -> "Geometry":
         """Read geometry from a folder containing mesh and markers files.
 
         Parameters
@@ -397,12 +413,11 @@ class Geometry:
             The MPI communicator to use for reading the mesh and markers.
         folder : str | Path
             The path to the folder containing the geometry data.
-            The folder should contain the following files:
-            - mesh.xdmf: The mesh file in XDMF format.
-            - markers.json: A JSON file containing markers.
-            - microstructure.json: A JSON file containing microstructure data (optional).
-            - microstructure.bp: A BP file containing microstructure functions (optional).
-            - info.json: A JSON file containing additional information (optional).
+        ghost_mode : dolfinx.mesh.GhostMode, optional
+            The ghost mode to use when reading the mesh, by default
+            dolfinx.mesh.GhostMode.shared_facet.
+            Note that if you need to refine the mesh later, you should
+            use dolfinx.mesh.GhostMode.none.
 
         Returns
         -------
@@ -421,7 +436,7 @@ class Geometry:
 
         if (folder / "geometry.bp").exists():
             logger.debug("Reading geometry from geometry.bp")
-            return cls.from_file(comm=comm, path=folder / "geometry.bp")
+            return cls.from_file(comm=comm, path=folder / "geometry.bp", ghost_mode=ghost_mode)
 
         logger.warning(
             "geometry.bp not found, reading mesh and microstructure separately. "
@@ -432,7 +447,9 @@ class Geometry:
         # Read mesh
         if (folder / "mesh.xdmf").exists():
             logger.debug("Reading mesh")
-            mesh, tags = utils.read_mesh(comm=comm, filename=folder / "mesh.xdmf")
+            mesh, tags = utils.read_mesh(
+                comm=comm, filename=folder / "mesh.xdmf", ghost_mode=ghost_mode
+            )
         else:
             raise ValueError("No mesh file found")
 
