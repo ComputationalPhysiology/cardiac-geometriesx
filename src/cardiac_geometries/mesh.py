@@ -109,6 +109,7 @@ def ukb(
     use_burns: bool = False,
     burns_path: Path | None = None,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -145,6 +146,8 @@ def ukb(
         using scipy.io.loadmat. This needs to be specified if `use_burns`.
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -190,7 +193,7 @@ def ukb(
     else:
         mesh_name = outdir / f"{case}.msh"
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
     info = {
         "mode": mode,
         "std": std,
@@ -204,6 +207,8 @@ def ukb(
         "mesh_type": "ukb",
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
+        "use_burns": use_burns,
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         (outdir / "markers.json").write_text(
@@ -258,7 +263,7 @@ def ukb(
         vfun=geometry.vfun,
         **fibers,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     return geo
 
 
@@ -282,6 +287,7 @@ def biv_ellipsoid(
     fiber_space: str = "P_1",
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -317,6 +323,8 @@ def biv_ellipsoid(
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -346,6 +354,7 @@ def biv_ellipsoid(
         "mesh_type": "biv_ellipsoid",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -375,7 +384,7 @@ def biv_ellipsoid(
             verbose=verbose,
         )
     comm.barrier()
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -418,7 +427,7 @@ def biv_ellipsoid(
         vfun=geometry.vfun,
         **fibers,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     return geo
 
 
@@ -441,6 +450,7 @@ def lv_ellipsoid(
     dmu_factor: float = 1 / 4,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create an LV ellipsoidal geometry
 
@@ -482,6 +492,8 @@ def lv_ellipsoid(
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -511,6 +523,7 @@ def lv_ellipsoid(
         "mesh_type": "lv_ellipsoid",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -538,7 +551,7 @@ def lv_ellipsoid(
         )
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     kwargs = {"cfun": geometry.cfun}
     if aha:
@@ -619,14 +632,20 @@ def lv_ellipsoid(
 
 
 def slab_dolfinx(
-    comm, outdir: Path, lx: float = 20.0, ly: float = 7.0, lz: float = 3.0, dx: float = 1.0
+    comm,
+    outdir: Path,
+    lx: float = 20.0,
+    ly: float = 7.0,
+    lz: float = 3.0,
+    dx: float = 1.0,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> utils.GMshGeometry:
     mesh = dolfinx.mesh.create_box(
         comm,
         [[0.0, 0.0, 0.0], [lx, ly, lz]],
         [int(lx / dx), int(ly / dx), int(lz / dx)],
         dolfinx.mesh.CellType.tetrahedron,
-        ghost_mode=dolfinx.mesh.GhostMode.none,
+        ghost_mode=ghost_mode,
     )
     mesh.name = "Mesh"
     fdim = mesh.topology.dim - 1
@@ -705,6 +724,7 @@ def slab(
     verbose: bool = False,
     use_dolfinx: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create slab geometry
 
@@ -734,6 +754,8 @@ def slab(
         If True use dolfinx to create the mesh, by default False (gmsh)
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -741,6 +763,7 @@ def slab(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
+
     outdir = Path(outdir)
     mesh_name = outdir / "slab.msh"
     info = {
@@ -755,6 +778,7 @@ def slab(
         "mesh_type": "slab",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -786,10 +810,11 @@ def slab(
             ly=ly,
             lz=lz,
             dx=dx,
+            ghost_mode=ghost_mode,
         )
 
     else:
-        geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+        geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -820,7 +845,7 @@ def slab(
         vfun=geometry.vfun,
         **fibers,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     return geo
 
 
@@ -835,6 +860,7 @@ def slab_in_bath(
     dx: float = 0.001,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create slab geometry
 
@@ -860,6 +886,8 @@ def slab_in_bath(
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -881,6 +909,7 @@ def slab_in_bath(
         "mesh_type": "slab-bath",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -905,7 +934,7 @@ def slab_in_bath(
             verbose=verbose,
         )
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -922,7 +951,7 @@ def slab_in_bath(
         efun=geometry.efun,
         vfun=geometry.vfun,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
 
     return geo
 
@@ -940,6 +969,7 @@ def cylinder(
     aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create a cylindrical geometry
 
@@ -969,6 +999,8 @@ def cylinder(
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -992,6 +1024,7 @@ def cylinder(
         "mesh_type": "cylinder",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -1014,7 +1047,7 @@ def cylinder(
         )
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -1046,7 +1079,7 @@ def cylinder(
         **fibers,
     )
 
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
 
     return geo
 
@@ -1066,6 +1099,7 @@ def cylinder_racetrack(
     aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create a racetrack-shaped thick cylindrical shell mesh using GMSH.
 
@@ -1103,6 +1137,8 @@ def cylinder_racetrack(
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -1128,6 +1164,7 @@ def cylinder_racetrack(
         "mesh_type": "cylinder_racetrack",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -1152,7 +1189,7 @@ def cylinder_racetrack(
         )
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -1188,7 +1225,7 @@ def cylinder_racetrack(
         **fibers,
     )
 
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
 
     return geo
 
@@ -1208,6 +1245,7 @@ def cylinder_D_shaped(
     aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
 ) -> Geometry:
     """Create a D-shaped thick cylindrical shell mesh using GMSH.
 
@@ -1245,6 +1283,8 @@ def cylinder_D_shaped(
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
 
     Returns
     -------
@@ -1270,6 +1310,7 @@ def cylinder_D_shaped(
         "mesh_type": "cylinder_D_shaped",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
     }
     if comm.rank == 0:
         outdir.mkdir(exist_ok=True, parents=True)
@@ -1294,7 +1335,7 @@ def cylinder_D_shaped(
         )
     comm.barrier()
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
     if comm.rank == 0:
         with open(outdir / "markers.json", "w") as f:
@@ -1330,6 +1371,6 @@ def cylinder_D_shaped(
         **fibers,
     )
 
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
+    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
 
     return geo
