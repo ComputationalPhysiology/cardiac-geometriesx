@@ -109,7 +109,7 @@ def ukb(
     use_burns: bool = False,
     burns_path: Path | None = None,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -147,7 +147,7 @@ def ukb(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -263,8 +263,20 @@ def ukb(
         vfun=geometry.vfun,
         **fibers,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-    return geo
+    # geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
+    # return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
 
 
 def biv_ellipsoid(
@@ -287,7 +299,7 @@ def biv_ellipsoid(
     fiber_space: str = "P_1",
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -324,7 +336,7 @@ def biv_ellipsoid(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -427,8 +439,19 @@ def biv_ellipsoid(
         vfun=geometry.vfun,
         **fibers,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-    return geo
+
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
 
 
 def lv_ellipsoid(
@@ -450,7 +473,7 @@ def lv_ellipsoid(
     dmu_factor: float = 1 / 4,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create an LV ellipsoidal geometry
 
@@ -493,7 +516,7 @@ def lv_ellipsoid(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -626,9 +649,18 @@ def lv_ellipsoid(
         vfun=geometry.vfun,
         **kwargs,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir)
-
-    return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=kwargs.get("cfun", None),
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=kwargs.get("f0", None),
+        s0=kwargs.get("s0", None),
+        n0=kwargs.get("n0", None),
+        info=info,
+    )
 
 
 def slab_dolfinx(
@@ -638,7 +670,7 @@ def slab_dolfinx(
     ly: float = 7.0,
     lz: float = 3.0,
     dx: float = 1.0,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> utils.GMshGeometry:
     mesh = dolfinx.mesh.create_box(
         comm,
@@ -724,7 +756,7 @@ def slab(
     verbose: bool = False,
     use_dolfinx: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create slab geometry
 
@@ -755,7 +787,7 @@ def slab(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -845,8 +877,18 @@ def slab(
         vfun=geometry.vfun,
         **fibers,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-    return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
 
 
 def slab_in_bath(
@@ -860,7 +902,7 @@ def slab_in_bath(
     dx: float = 0.001,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create slab geometry
 
@@ -887,7 +929,7 @@ def slab_in_bath(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -951,9 +993,15 @@ def slab_in_bath(
         efun=geometry.efun,
         vfun=geometry.vfun,
     )
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-
-    return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        info=info,
+    )
 
 
 def cylinder(
@@ -969,7 +1017,7 @@ def cylinder(
     aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create a cylindrical geometry
 
@@ -1000,7 +1048,7 @@ def cylinder(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -1079,9 +1127,18 @@ def cylinder(
         **fibers,
     )
 
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-
-    return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
 
 
 def cylinder_racetrack(
@@ -1099,7 +1156,7 @@ def cylinder_racetrack(
     aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create a racetrack-shaped thick cylindrical shell mesh using GMSH.
 
@@ -1138,7 +1195,7 @@ def cylinder_racetrack(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -1225,9 +1282,18 @@ def cylinder_racetrack(
         **fibers,
     )
 
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-
-    return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
 
 
 def cylinder_D_shaped(
@@ -1245,7 +1311,7 @@ def cylinder_D_shaped(
     aha: bool = False,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
-    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.shared_facet,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
     """Create a D-shaped thick cylindrical shell mesh using GMSH.
 
@@ -1284,7 +1350,7 @@ def cylinder_D_shaped(
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
-        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.shared_facet
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
 
     Returns
     -------
@@ -1371,6 +1437,15 @@ def cylinder_D_shaped(
         **fibers,
     )
 
-    geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
-
-    return geo
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
