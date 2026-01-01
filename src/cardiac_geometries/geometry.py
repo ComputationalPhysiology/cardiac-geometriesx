@@ -29,6 +29,79 @@ def microstructure_path(path: Path) -> Path:
     return path.parent / f"microstructure_{path.stem}.json"
 
 
+def additional_data_path(path: Path) -> Path:
+    return path.parent / f"additional_data_{path.stem}.json"
+
+
+def save_additional_data(
+    additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function],
+    path: Path,
+    mesh: dolfinx.mesh.Mesh,
+) -> None:
+    additional_data_attributes = {}
+    for name, data in additional_data.items():
+        if isinstance(data, dolfinx.mesh.MeshTags):
+            adios4dolfinx.write_meshtags(
+                meshtags=data,
+                mesh=mesh,
+                filename=path,
+                meshtag_name=name,
+            )
+            additional_data_attributes[name] = {"type": "MeshTags"}
+        elif isinstance(data, dolfinx.fem.Function):
+            adios4dolfinx.write_function(
+                u=data,
+                filename=path,
+                name=name,
+            )
+            additional_data_attributes[name] = {
+                "type": "Function",
+                "element": utils.element2array(data.ufl_element()),
+            }
+        else:
+            logger.warning(
+                f"Additional data '{name}' of type {type(data)} "
+                "is not supported and will not be saved."
+            )
+
+    if mesh.comm.rank == 0:
+        additional_data_path(path).write_text(
+            json.dumps(additional_data_attributes, indent=4, default=utils.json_serial)
+        )
+
+
+def load_additional_data(
+    path: Path,
+    mesh: dolfinx.mesh.Mesh,
+) -> dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function]:
+    additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function] = {}
+    if not additional_data_path(path).exists():
+        return additional_data
+
+    if mesh.comm.rank == 0:
+        additional_data_attributes = json.loads(additional_data_path(path).read_text())
+    else:
+        additional_data_attributes = {}
+    additional_data_attributes = mesh.comm.bcast(additional_data_attributes, root=0)
+
+    for name, attr in additional_data_attributes.items():
+        if attr["type"] == "MeshTags":
+            mt = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name=name, filename=path)
+            additional_data[name] = mt
+        elif attr["type"] == "Function":
+            V = utils.array2functionspace(mesh, tuple(attr["element"]))
+            f = dolfinx.fem.Function(V, name=name)
+            adios4dolfinx.read_function(u=f, filename=path, name=name)
+            additional_data[name] = f
+        else:
+            logger.warning(
+                f"Additional data '{name}' of type {attr['type']} "
+                "is not supported and will not be loaded."
+            )
+
+    return additional_data
+
+
 def save_geometry(
     path: Path,
     mesh: dolfinx.mesh.Mesh,
@@ -41,6 +114,7 @@ def save_geometry(
     f0: dolfinx.fem.Function | None = None,
     s0: dolfinx.fem.Function | None = None,
     n0: dolfinx.fem.Function | None = None,
+    additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function] | None = None,
 ) -> None:
     path = Path(path)
 
@@ -92,6 +166,9 @@ def save_geometry(
         functions=[f for f in (f0, s0, n0) if f is not None],
         path=path,
     )
+
+    if additional_data is not None:
+        save_additional_data(additional_data, path, mesh=mesh)
     mesh.comm.barrier()
 
 
@@ -107,6 +184,9 @@ class Geometry:
     s0: dolfinx.fem.Function | None = None
     n0: dolfinx.fem.Function | None = None
     info: dict[str, Any] = field(default_factory=dict)
+    additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function] = field(
+        default_factory=dict
+    )
 
     def save(self, path: str | Path) -> None:
         """Save the geometry to a file using adios4dolfinx.
@@ -129,6 +209,7 @@ class Geometry:
             f0=self.f0,
             s0=self.s0,
             n0=self.n0,
+            additional_data=self.additional_data,
         )
 
     def save_folder(self, folder: str | Path) -> None:
@@ -169,6 +250,7 @@ class Geometry:
             f0=self.f0,
             s0=self.s0,
             n0=self.n0,
+            additional_data=self.additional_data,
         )
         logger.info(f"Geometry saved to {folder}")
 
@@ -390,10 +472,13 @@ class Geometry:
             else:
                 functions[name] = f
 
+        additional_data = load_additional_data(path=path, mesh=mesh)
+
         return cls(
             mesh=mesh,
             markers=markers,
             info=info,
+            additional_data=additional_data,
             **functions,
             **tags,
         )
