@@ -11,6 +11,7 @@ parts:
     - file: demos/slab.py
     - file: demos/cylinders.py
     - file: demos/ukb_atlas.py
+    - file: demos/additional_data.py
     - file: docs/gui.md
   - caption: API documentation
     chapters:
