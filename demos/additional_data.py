@@ -104,7 +104,6 @@ values = np.hstack(comm.allgather(aha.x.array.astype(np.int32)))
 aha_mt = dolfinx.mesh.meshtags(
     geo.mesh, 3, entities, values,
 )
-aha_mt.name = "aha_segments"
 
 # Visualize AHA segments
 try:
