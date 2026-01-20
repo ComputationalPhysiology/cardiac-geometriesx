@@ -1408,7 +1408,7 @@ def cylinder_D_shaped(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
-            mode="d_shape",
+            mode="d_shaped",
             fillet_radius=fillet_radius,
         )
 
