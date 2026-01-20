@@ -918,6 +918,13 @@ def cylinder(
     show_default=True,
 )
 @click.option(
+    "--fillet-radius",
+    default=None,
+    type=float,
+    help="Radius for filleting the corners",
+    show_default=True,
+)
+@click.option(
     "--ghost-mode",
     default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
@@ -939,6 +946,7 @@ def cylinder_racetrack(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    fillet_radius: float | None = None,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
@@ -957,6 +965,7 @@ def cylinder_racetrack(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
+        fillet_radius=fillet_radius,
     )
 
 
@@ -1043,6 +1052,13 @@ def cylinder_racetrack(
     show_default=True,
 )
 @click.option(
+    "--fillet-radius",
+    default=None,
+    type=float,
+    help="Radius for filleting the corners",
+    show_default=True,
+)
+@click.option(
     "--ghost-mode",
     default=dolfinx.mesh.GhostMode.none,
     type=click.Choice(
@@ -1064,6 +1080,7 @@ def cylinder_D_shaped(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    fillet_radius: float | None = None,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ):
     outdir = Path(outdir)
@@ -1082,6 +1099,7 @@ def cylinder_D_shaped(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
+        fillet_radius=fillet_radius,
     )
 
 
