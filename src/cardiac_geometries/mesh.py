@@ -1154,6 +1154,7 @@ def cylinder_racetrack(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     aha: bool = False,
+    fillet_radius: float | None = None,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
@@ -1190,6 +1191,9 @@ def cylinder_racetrack(
         Function space for fibers of the form family_degree, by default "P_1"
     aha : bool, optional
         If True create 17-segment AHA regions
+    fillet_radius : float | None, optional
+        Radius for the fillet on the flat faces. If None no fillet is created.
+        By default None.
     verbose : bool, optional
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
@@ -1218,6 +1222,7 @@ def cylinder_racetrack(
         "fiber_angle_epi": fiber_angle_epi,
         "fiber_space": fiber_space,
         "aha": aha,
+        "fillet_radius": fillet_radius,
         "mesh_type": "cylinder_racetrack",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
@@ -1234,7 +1239,7 @@ def cylinder_racetrack(
                 default=utils.json_serial,
             )
 
-        cgc.cylinder_racetrack(
+        cgc.cylinder_cut(
             inner_radius=r_inner,
             outer_radius=r_outer,
             inner_flat_face_distance=inner_flat_face_distance,
@@ -1243,7 +1248,10 @@ def cylinder_racetrack(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            mode="racetrack",
+            fillet_radius=fillet_radius,
         )
+
     comm.barrier()
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
@@ -1254,16 +1262,13 @@ def cylinder_racetrack(
 
     fibers = {}
     if create_fibers:
-        from .fibers.cylinder_flat import create_microstructure
+        from .fibers.cylinder import create_microstructure
 
         system = create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
             r_outer=r_outer,
-            inner_flat_face_distance=inner_flat_face_distance,
-            ffun=geometry.ffun,
-            markers=geometry.markers,
             alpha_endo=fiber_angle_endo,
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
@@ -1309,6 +1314,7 @@ def cylinder_D_shaped(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     aha: bool = False,
+    fillet_radius: float | None = None,
     verbose: bool = False,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
@@ -1345,6 +1351,9 @@ def cylinder_D_shaped(
         Function space for fibers of the form family_degree, by default "P_1"
     aha : bool, optional
         If True create 17-segment AHA regions
+    fillet_radius : float | None, optional
+        Radius for the fillet on the flat faces. If None no fillet is created.
+        By default None.
     verbose : bool, optional
         If True print information from gmsh, by default False
     comm : MPI.Comm, optional
@@ -1373,6 +1382,7 @@ def cylinder_D_shaped(
         "fiber_angle_epi": fiber_angle_epi,
         "fiber_space": fiber_space,
         "aha": aha,
+        "fillet_radius": fillet_radius,
         "mesh_type": "cylinder_D_shaped",
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
@@ -1389,7 +1399,7 @@ def cylinder_D_shaped(
                 default=utils.json_serial,
             )
 
-        cgc.cylinder_D_shaped(
+        cgc.cylinder_cut(
             inner_radius=r_inner,
             outer_radius=r_outer,
             inner_flat_face_distance=inner_flat_face_distance,
@@ -1398,7 +1408,10 @@ def cylinder_D_shaped(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            mode="d_shape",
+            fillet_radius=fillet_radius,
         )
+
     comm.barrier()
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
@@ -1409,16 +1422,13 @@ def cylinder_D_shaped(
 
     fibers = {}
     if create_fibers:
-        from .fibers.cylinder_flat import create_microstructure
+        from .fibers.cylinder import create_microstructure
 
         system = create_microstructure(
             mesh=geometry.mesh,
             function_space=fiber_space,
             r_inner=r_inner,
             r_outer=r_outer,
-            inner_flat_face_distance=inner_flat_face_distance,
-            ffun=geometry.ffun,
-            markers=geometry.markers,
             alpha_endo=fiber_angle_endo,
             alpha_epi=fiber_angle_epi,
             outdir=outdir,
