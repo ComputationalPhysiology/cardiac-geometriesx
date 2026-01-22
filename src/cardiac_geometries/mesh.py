@@ -1051,6 +1051,143 @@ def cylinder(
     return geo
 
 
+def cylinder_elliptical(
+    outdir: Path | str,
+    r_inner_x: float = 10.0,
+    r_inner_y: float = 10.0,
+    r_outer_x: float = 20.0,
+    r_outer_y: float = 20.0,
+    height: float = 40.0,
+    char_length: float = 10.0,
+    create_fibers: bool = False,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
+    fiber_space: str = "P_1",
+    aha: bool = False,
+    verbose: bool = False,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+) -> Geometry:
+    """Create a cylindrical geometry
+
+    Parameters
+    ----------
+    outdir : Optional[Path], optional
+        Directory where to save the results.
+    r_inner_x : float, optional
+        Radius on the endocardium layer along the x-axis, by default 10.0
+    r_inner_y : float, optional
+        Radius on the endocardium layer along the y-axis, by default 10.0
+    r_outer_x : float, optional
+       Radius on the epicardium layer along the x-axis, by default 20.0
+    r_outer_y : float, optional
+       Radius on the epicardium layer along the y-axis, by default 20.0
+    height : float, optional
+        Longest radius on the endocardium layer, by default 10.0
+    char_length : float, optional
+        Characteristic length of mesh, by default 10.0
+    create_fibers : bool, optional
+        If True create analytic fibers, by default False
+    fiber_angle_endo : float, optional
+        Angle for the endocardium, by default 60
+    fiber_angle_epi : float, optional
+        Angle for the epicardium, by default -60
+    fiber_space : str, optional
+        Function space for fibers of the form family_degree, by default "P_1"
+    aha : bool, optional
+        If True create 17-segment AHA regions
+    verbose : bool, optional
+        If True print information from gmsh, by default False
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
+
+    Returns
+    -------
+    cardiac_geometries.geometry.Geometry
+        A Geometry with the mesh, markers, markers functions and fibers.
+
+    """
+
+    outdir = Path(outdir)
+    mesh_name = outdir / "cylinder.msh"
+    info = {
+        "r_inner_x": r_inner_x,
+        "r_inner_y": r_inner_y,
+        "r_outer_x": r_outer_x,
+        "r_outer_y": r_outer_y,
+        "height": height,
+        "char_length": char_length,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "aha": aha,
+        "mesh_type": "cylinder_elliptical",
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
+
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                info,
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
+
+        cgc.cylinder_elliptical(
+            inner_radius_x=r_inner_x,
+            inner_radius_y=r_inner_y,
+            outer_radius_x=r_outer_x,
+            outer_radius_y=r_outer_y,
+            height=height,
+            mesh_name=mesh_name.as_posix(),
+            char_length=char_length,
+            verbose=verbose,
+        )
+    comm.barrier()
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name)
+
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
+
+    fibers = {}
+    if create_fibers:
+        from .fibers.cylinder_elliptical import create_microstructure
+
+        system = create_microstructure(
+            mesh=geometry.mesh,
+            function_space=fiber_space,
+            r_inner_x=r_inner_x,
+            r_inner_y=r_inner_y,
+            r_outer_x=r_outer_x,
+            r_outer_y=r_outer_y,
+            alpha_endo=fiber_angle_endo,
+            alpha_epi=fiber_angle_epi,
+            outdir=outdir,
+        )
+
+        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        ffun=geometry.ffun,
+        efun=geometry.efun,
+        vfun=geometry.vfun,
+        **fibers,
+    )
+
+    geo = Geometry.from_folder(comm=comm, folder=outdir)
+
+    return geo
+
+
 def cylinder_racetrack(
     outdir: Path | str,
     r_inner: float = 13.0,
