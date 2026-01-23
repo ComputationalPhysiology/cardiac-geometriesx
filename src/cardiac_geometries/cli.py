@@ -835,6 +835,120 @@ def cylinder(
     )
 
 
+@click.command(help="Create elliptical cylinder geometry")
+@click.argument(
+    "outdir",
+    required=True,
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+)
+@click.option(
+    "--char-length",
+    default=10.0,
+    type=float,
+    help="Characteristic length of mesh",
+    show_default=True,
+)
+@click.option(
+    "--r-inner-x",
+    default=10.0,
+    type=float,
+    help="Inner radius of the cylinder in the x-direction",
+    show_default=True,
+)
+@click.option(
+    "--r-inner-y",
+    default=10.0,
+    type=float,
+    help="Inner radius of the cylinder in the y-direction",
+    show_default=True,
+)
+@click.option(
+    "--r-outer-x",
+    default=20.0,
+    type=float,
+    help="Outer radius of the cylinder in the x-direction",
+    show_default=True,
+)
+@click.option(
+    "--r-outer-y",
+    default=20.0,
+    type=float,
+    help="Outer radius of the cylinder in the y-direction",
+    show_default=True,
+)
+@click.option(
+    "--height",
+    default=40.0,
+    type=float,
+    help="Height of the cylinder",
+    show_default=True,
+)
+@click.option(
+    "--create-fibers",
+    default=False,
+    is_flag=True,
+    help="If True create analytic fibers",
+    show_default=True,
+)
+@click.option(
+    "--fiber-angle-endo",
+    default=-60,
+    type=float,
+    help="Angle for the endocardium",
+    show_default=True,
+)
+@click.option(
+    "--fiber-angle-epi",
+    default=+60,
+    type=float,
+    help="Angle for the epicardium",
+    show_default=True,
+)
+@click.option(
+    "--fiber-space",
+    default="P_1",
+    type=str,
+    help="Function space for fibers of the form family_degree",
+    show_default=True,
+)
+def cylinder_elliptical(
+    outdir: Path,
+    char_length: float = 10.0,
+    r_inner_x: float = 10.0,
+    r_inner_y: float = 10.0,
+    r_outer_x: float = 20.0,
+    r_outer_y: float = 20.0,
+    height: float = 40.0,
+    create_fibers: bool = False,
+    fiber_angle_endo: float = -60,
+    fiber_angle_epi: float = +60,
+    fiber_space: str = "P_1",
+):
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True)
+
+    geo = mesh.cylinder_elliptical(
+        outdir=outdir,
+        r_inner_x=r_inner_x,
+        r_inner_y=r_inner_y,
+        r_outer_x=r_outer_x,
+        r_outer_y=r_outer_y,
+        height=height,
+        char_length=char_length,
+        create_fibers=create_fibers,
+        fiber_angle_endo=fiber_angle_endo,
+        fiber_angle_epi=fiber_angle_epi,
+        fiber_space=fiber_space,
+    )
+    geo.save(outdir / "cylinder.bp")
+
+
 @click.command(help="Create racetrack cylinder geometry")
 @click.argument(
     "outdir",
@@ -1194,6 +1308,7 @@ app.add_command(slab_in_bath)
 app.add_command(gui)
 app.add_command(ukb)
 app.add_command(cylinder)
+app.add_command(cylinder_elliptical)
 app.add_command(cylinder_racetrack)
 app.add_command(cylinder_D_shaped)
 app.add_command(rotate)
