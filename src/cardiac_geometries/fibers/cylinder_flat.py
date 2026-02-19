@@ -72,9 +72,7 @@ def create_microstructure(
 
         if outdir is not None:
             try:
-                with dolfinx.io.VTXWriter(
-                    mesh.comm, Path(outdir) / "laplace_flat.bp", [t], engine="BP4"
-                ) as file:
+                with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / "laplace_flat.bp", [t]) as file:
                     file.write(0.0)
             except RuntimeError:
                 pass
@@ -105,7 +103,7 @@ def create_microstructure(
         if outdir is not None:
             try:
                 with dolfinx.io.VTXWriter(
-                    mesh.comm, Path(outdir) / "laplace_flat1.bp", [t], engine="BP4"
+                    mesh.comm, Path(outdir) / "laplace_flat1.bp", [t]
                 ) as file:
                     file.write(0.0)
             except RuntimeError:
@@ -134,7 +132,7 @@ def create_microstructure(
         if outdir is not None:
             try:
                 with dolfinx.io.VTXWriter(
-                    mesh.comm, Path(outdir) / "laplace_flat2.bp", [t], engine="BP4"
+                    mesh.comm, Path(outdir) / "laplace_flat2.bp", [t]
                 ) as file:
                     file.write(0.0)
             except RuntimeError:

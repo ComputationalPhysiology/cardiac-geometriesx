@@ -7,8 +7,8 @@ from typing import Any
 
 from mpi4py import MPI
 
-import adios4dolfinx
 import dolfinx
+import io4dolfinx
 import ufl
 from packaging.version import Version
 
@@ -41,7 +41,7 @@ def save_additional_data(
     additional_data_attributes = {}
     for name, data in additional_data.items():
         if isinstance(data, dolfinx.mesh.MeshTags):
-            adios4dolfinx.write_meshtags(
+            io4dolfinx.write_meshtags(
                 meshtags=data,
                 mesh=mesh,
                 filename=path,
@@ -49,7 +49,7 @@ def save_additional_data(
             )
             additional_data_attributes[name] = {"type": "MeshTags"}
         elif isinstance(data, dolfinx.fem.Function):
-            adios4dolfinx.write_function(
+            io4dolfinx.write_function(
                 u=data,
                 filename=path,
                 name=name,
@@ -86,12 +86,12 @@ def load_additional_data(
 
     for name, attr in additional_data_attributes.items():
         if attr["type"] == "MeshTags":
-            mt = adios4dolfinx.read_meshtags(mesh=mesh, meshtag_name=name, filename=path)
+            mt = io4dolfinx.read_meshtags(mesh=mesh, meshtag_name=name, filename=path)
             additional_data[name] = mt
         elif attr["type"] == "Function":
             V = utils.array2functionspace(mesh, tuple(attr["element"]))
             f = dolfinx.fem.Function(V, name=name)
-            adios4dolfinx.read_function(u=f, filename=path, name=name)
+            io4dolfinx.read_function(u=f, filename=path, name=name)
             additional_data[name] = f
         else:
             logger.warning(
@@ -120,7 +120,7 @@ def save_geometry(
 
     shutil.rmtree(path, ignore_errors=True)
     mesh.comm.barrier()
-    adios4dolfinx.write_mesh(mesh=mesh, filename=path)
+    io4dolfinx.write_mesh(mesh=mesh, filename=path)
 
     if mesh.comm.rank == 0:
         if markers is not None:
@@ -129,14 +129,14 @@ def save_geometry(
             info_path(path).write_text(json.dumps(info, indent=4, default=utils.json_serial))
 
     if cfun is not None:
-        adios4dolfinx.write_meshtags(
+        io4dolfinx.write_meshtags(
             meshtags=cfun,
             mesh=mesh,
             filename=path,
             meshtag_name="Cell tags",
         )
     if ffun is not None:
-        adios4dolfinx.write_meshtags(
+        io4dolfinx.write_meshtags(
             meshtags=ffun,
             mesh=mesh,
             filename=path,
@@ -145,14 +145,14 @@ def save_geometry(
     if Version(dolfinx.__version__) >= Version("0.10.0"):
         # Write edge and vertex tags is buggy in older versions
         if efun is not None:
-            adios4dolfinx.write_meshtags(
+            io4dolfinx.write_meshtags(
                 meshtags=efun,
                 mesh=mesh,
                 filename=path,
                 meshtag_name="Edge tags",
             )
         if vfun is not None:
-            adios4dolfinx.write_meshtags(
+            io4dolfinx.write_meshtags(
                 meshtags=vfun,
                 mesh=mesh,
                 filename=path,
@@ -189,7 +189,7 @@ class Geometry:
     )
 
     def save(self, path: str | Path) -> None:
-        """Save the geometry to a file using adios4dolfinx.
+        """Save the geometry to a file using io4dolfinx.
 
         Parameters
         ----------
@@ -384,7 +384,7 @@ class Geometry:
         path: str | Path,
         ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     ) -> "Geometry":
-        """Read geometry from a file using adios4dolfinx.
+        """Read geometry from a file using io4dolfinx.
 
         Parameters
         ----------
@@ -425,13 +425,13 @@ class Geometry:
         else:
             info = {}
 
-        mesh = adios4dolfinx.read_mesh(
+        mesh = io4dolfinx.read_mesh(
             comm=comm,
             filename=path,
             ghost_mode=ghost_mode,
         )
 
-        # markers = adios4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
+        # markers = io4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
         tags = {}
         for name, meshtag_name in (
             ("cfun", "Cell tags"),
@@ -440,7 +440,7 @@ class Geometry:
             ("vfun", "Vertex tags"),
         ):
             try:
-                tags[name] = adios4dolfinx.read_meshtags(
+                tags[name] = io4dolfinx.read_meshtags(
                     mesh=mesh, meshtag_name=meshtag_name, filename=path
                 )
             except (KeyError, IndexError):
@@ -449,7 +449,7 @@ class Geometry:
 
         functions = {}
         # if function_space_data is None:
-        #     function_space_data = adios4dolfinx.read_attributes(
+        #     function_space_data = io4dolfinx.read_attributes(
         #         comm=comm, filename=path, name="function_space"
         #     )
         if microstructure_path(path).exists():
@@ -466,7 +466,7 @@ class Geometry:
             V = utils.array2functionspace(mesh, tuple(el))
             f = dolfinx.fem.Function(V, name=name)
             try:
-                adios4dolfinx.read_function(u=f, filename=path, name=name)
+                io4dolfinx.read_function(u=f, filename=path, name=name)
             except KeyError:
                 continue
             else:
@@ -562,7 +562,7 @@ class Geometry:
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
             logger.debug("Reading microstructure")
-            # function_space = adios4dolfinx.read_attributes(
+            # function_space = io4dolfinx.read_attributes(
             #     comm=MPI.COMM_WORLD, filename=microstructure_path, name="function_space"
             # )
             for name, el in microstructure.items():
@@ -571,7 +571,7 @@ class Geometry:
                 V = utils.array2functionspace(mesh, tuple(el))
                 f = dolfinx.fem.Function(V, name=name)
                 try:
-                    adios4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
+                    io4dolfinx.read_function(u=f, filename=microstructure_path, name=name)
                 except KeyError:
                     continue
                 else:

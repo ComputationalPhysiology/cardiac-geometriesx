@@ -217,9 +217,7 @@ def create_microstructure(
 
     if outdir is not None:
         try:
-            with dolfinx.io.VTXWriter(
-                mesh.comm, Path(outdir) / "laplace.bp", [t], engine="BP4"
-            ) as file:
+            with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / "laplace.bp", [t]) as file:
                 file.write(0.0)
         except RuntimeError:
             pass
