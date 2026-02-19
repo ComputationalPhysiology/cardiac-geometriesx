@@ -3,8 +3,8 @@ import shutil
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
-import adios4dolfinx
 import dolfinx
+import io4dolfinx
 import numpy as np
 import ufl
 from dolfinx.fem.petsc import LinearProblem
@@ -69,7 +69,7 @@ def save_microstructure(
                 json.dumps(attributes, indent=4, default=json_serial)
             )
         for name, u in zip(("f0", "s0", "n0"), functions):
-            adios4dolfinx.write_function(u=u, filename=path, name=name)
+            io4dolfinx.write_function(u=u, filename=path, name=name)
 
 
 def normalize(u):

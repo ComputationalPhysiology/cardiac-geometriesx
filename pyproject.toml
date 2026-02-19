@@ -21,7 +21,7 @@ dependencies = [
     "structlog",
     "cardiac-geometries-core>=0.4",
     "rich-click",
-    "adios4dolfinx",
+    "io4dolfinx",
     "scifem",
 ]
 
