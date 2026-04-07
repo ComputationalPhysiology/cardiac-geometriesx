@@ -282,17 +282,17 @@ def ukb(
 def biv_ellipsoid(
     outdir: str | Path,
     char_length: float = 0.5,
-    base_cut_z: float = 2.5,
-    box_size: float = 15.0,  # Size of the cutting box
+    base_cut_z: float = 1.0,
+    box_size: float = 20.0,  # Size of the cutting box
     rv_wall_thickness: float = 0.4,  # cm
     lv_wall_thickness: float = 0.5,  # cm
-    rv_offset_x: float = 2.5,
-    lv_radius_x: float = 2.0,
-    lv_radius_y: float = 1.8,
-    lv_radius_z: float = 3.25,
-    rv_radius_x: float = 1.9,
-    rv_radius_y: float = 2.5,
-    rv_radius_z: float = 3.0,
+    rv_offset_x: float = 1.0,
+    lv_radius_x: float = 2.2,
+    lv_radius_y: float = 2.2,
+    lv_radius_z: float = 4.5,
+    rv_radius_x: float = 3.2,
+    rv_radius_y: float = 2.3,
+    rv_radius_z: float = 4.3,
     create_fibers: bool = False,
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
@@ -310,19 +310,19 @@ def biv_ellipsoid(
     char_length : float, optional
         Characteristic length of mesh, by default 0.5
     box_size : float, optional
-        Size of the cutting box, by default 15.0
+        Size of the cutting box, by default 20.0
     lv_radius_x : float, optional
-        Radius of the left ventricle in the x-direction, by default 2.0
+        Radius of the left ventricle in the x-direction, by default 2.2
     lv_radius_y : float, optional
-        Radius of the left ventricle in the y-direction, by default 1.8
+        Radius of the left ventricle in the y-direction, by default 2.2
     lv_radius_z : float, optional
-        Radius of the left ventricle in the z-direction, by default 3.25
+        Radius of the left ventricle in the z-direction, by default 4.5
     rv_radius_x : float, optional
-        Radius of the right ventricle in the x-direction, by default 1.9
+        Radius of the right ventricle in the x-direction, by default 3.2
     rv_radius_y : float, optional
-        Radius of the right ventricle in the y-direction, by default 2.5
+        Radius of the right ventricle in the y-direction, by default 2.3
     rv_radius_z : float, optional
-        Radius of the right ventricle in the z-direction, by default 3.0
+        Radius of the right ventricle in the z-direction, by default 4.3
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional

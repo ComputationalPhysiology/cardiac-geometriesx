@@ -348,28 +348,28 @@ def lv_ellipsoid(
 )
 @click.option(
     "--char-length",
-    default=0.5,
+    default=0.4,
     type=float,
     help="Characteristic length of mesh",
     show_default=True,
 )
 @click.option(
     "--base-cut-z",
-    default=2.5,
+    default=1.0,
     type=float,
     help="Z-coordinate of the base cut",
     show_default=True,
 )
 @click.option(
     "--box-size",
-    default=15.0,
+    default=20.0,
     type=float,
     help="Size of the cutting box",
     show_default=True,
 )
 @click.option(
     "--rv-wall-thickness",
-    default=0.4,
+    default=0.3,
     type=float,
     help="Thickness of the right ventricle wall",
     show_default=True,
@@ -383,49 +383,49 @@ def lv_ellipsoid(
 )
 @click.option(
     "--rv-offset-x",
-    default=3.0,
+    default=1.0,
     type=float,
     help="X-offset of the right ventricle",
     show_default=True,
 )
 @click.option(
     "--lv-radius-x",
-    default=2.0,
+    default=2.2,
     type=float,
     help="X-radius of the left ventricle",
     show_default=True,
 )
 @click.option(
     "--lv-radius-y",
-    default=1.8,
+    default=2.2,
     type=float,
     help="Y-radius of the left ventricle",
     show_default=True,
 )
 @click.option(
     "--lv-radius-z",
-    default=3.25,
+    default=4.5,
     type=float,
     help="Z-radius of the left ventricle",
     show_default=True,
 )
 @click.option(
     "--rv-radius-x",
-    default=1.9,
+    default=3.2,
     type=float,
     help="X-radius of the right ventricle",
     show_default=True,
 )
 @click.option(
     "--rv-radius-y",
-    default=2.5,
+    default=2.3,
     type=float,
     help="Y-radius of the right ventricle",
     show_default=True,
 )
 @click.option(
     "--rv-radius-z",
-    default=3.0,
+    default=4.3,
     type=float,
     help="Z-radius of the right ventricle",
     show_default=True,
@@ -479,16 +479,16 @@ def biv_ellipsoid(
     outdir: Path,
     char_length: float = 0.4,  # cm
     base_cut_z: float = 2.5,
-    box_size: float = 15.0,  # Size of the cutting box
+    box_size: float = 20.0,  # Size of the cutting box
     rv_wall_thickness: float = 0.4,  # cm
     lv_wall_thickness: float = 0.5,  # cm
-    rv_offset_x: float = 3.0,
+    rv_offset_x: float = 1.4,
     lv_radius_x: float = 2.0,
     lv_radius_y: float = 1.8,
-    lv_radius_z: float = 3.25,
-    rv_radius_x: float = 1.9,
-    rv_radius_y: float = 2.5,
-    rv_radius_z: float = 3.0,
+    lv_radius_z: float = 4.0,
+    rv_radius_x: float = 3.8,
+    rv_radius_y: float = 2.6,
+    rv_radius_z: float = 4.0,
     create_fibers: bool = False,
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
