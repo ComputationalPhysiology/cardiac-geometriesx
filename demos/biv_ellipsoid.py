@@ -11,7 +11,7 @@ import cardiac_geometries
 
 geodir = Path("biv_ellipsoid")
 if not geodir.exists():
-    cardiac_geometries.mesh.biv_ellipsoid(outdir=geodir, create_fibers=True, fiber_space="P_1")
+    cardiac_geometries.mesh.biv_ellipsoid(outdir=geodir, create_fibers=True, fiber_space="P_2")
 
 # If the folder already exist, then we just load the geometry
 
@@ -68,7 +68,7 @@ if not pyvista.OFF_SCREEN:
 else:
     fig_as_array = plotter.screenshot("fiber_biv.png")
 
-# Now we could try to redo the exercise but with create a thinner RV wall and move the RV a bit closer to the LV.
+# Now we could try to redo the exercise but with create a thinner RV wall.
 # We can also try with different fiber angles, such that the fibers are
 # oriented more longitudinally at the endocardium and more circumferentially at the epicardium.
 
@@ -77,11 +77,10 @@ if not geodir2.exists():
     cardiac_geometries.mesh.biv_ellipsoid(
         outdir=geodir2,
         create_fibers=True,
-        fiber_space="P_1",
+        fiber_space="P_2",
         fiber_angle_endo=80,
         fiber_angle_epi=-30,
         rv_wall_thickness=0.2,
-        rv_offset_x=2.0,
     )
 
 # If the folder already exist, then we just load the geometry
