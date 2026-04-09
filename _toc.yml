@@ -13,6 +13,12 @@ parts:
     - file: demos/ukb_atlas.py
     - file: demos/additional_data.py
     - file: docs/gui.md
+
+  - caption: Published meshes
+    chapters:
+    - file: docs/published_meshes.md
+
+
   - caption: API documentation
     chapters:
     - file: CONTRIBUTING
