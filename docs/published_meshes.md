@@ -1,5 +1,19 @@
 # List of provided meshes from third party
 
+
+## A Publicly Available Virtual Cohort of Four-chamber Heart Meshes for Cardiac Electro-mechanics Simulations
+
+We present the first database of four-chamber heart models suitable for electro-mechanical simulations. Our database consists of twenty-four four-chamber heart models generated from end-diastolic CT acquired from heart failure patients recruited for cardiac resynchronization therapy upgrade. We also provide a higher resolution version for each of the twenty-four meshes.
+
+Read more at https://zenodo.org/records/3890034 or in the paper: https://doi.org/10.1371/journal.pone.0235145
+
+
+## Segmentation Networks and Representative Meshes from UK Biobank
+
+We present a database of representative left and right ventricular meshes constructed from patient-specific models based on a large cohort of ~55k participants from UK Biobank. It comprises 1423 representative tetrahedral finite element meshes across sex (male, female), body mass index (range: 16 - 42 kg/m²) and age (range: 49 - 80 years).
+
+Read more at https://zenodo.org/records/15649643 or in the paper https://doi.org/10.1371/journal.pone.0327158
+
 ## LifeX
 
 The LifeX example meshes can be found at https://zenodo.org/record/5810269#.YeEjWi8w1B0, which also contains a DOI: https://doi.org/10.5281/zenodo.5810269.
