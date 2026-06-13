@@ -989,9 +989,11 @@ def slab_in_bath(
 def cylinder(
     outdir: Path | str,
     r_inner: float = 10.0,
-    r_outer: float = 20.0,
+    r_outer: float = 15.0,
     height: float = 40.0,
-    char_length: float = 10.0,
+    floor_thickness: float = 0.0,
+    roof_thickness: float = 0.0,
+    char_length: float = 5.0,
     create_fibers: bool = False,
     fiber_angle_endo: float = 60,
     fiber_angle_epi: float = -60,
@@ -1010,11 +1012,15 @@ def cylinder(
     r_inner : float, optional
         Radius on the endocardium layer, by default 10.0
     r_outer : float, optional
-       Radius on the epicardium layer, by default 20.0
+       Radius on the epicardium layer, by default 15.0
     height : float, optional
-        Longest radius on the endocardium layer, by default 10.0
+        Longest radius on the endocardium layer, by default 40.0
+    floor_thickness : float, optional
+        Thickness of the floor, by default 0.0
+    roof_thickness : float, optional
+        Thickness of the roof, by default 0.0
     char_length : float, optional
-        Characteristic length of mesh, by default 10.0
+        Characteristic length of mesh, by default 5.0
     create_fibers : bool, optional
         If True create analytic fibers, by default False
     fiber_angle_endo : float, optional
@@ -1045,6 +1051,8 @@ def cylinder(
         "r_inner": r_inner,
         "r_outer": r_outer,
         "height": height,
+        "floor_thickness": floor_thickness,
+        "roof_thickness": roof_thickness,
         "char_length": char_length,
         "create_fibers": create_fibers,
         "fiber_angle_endo": fiber_angle_endo,
@@ -1071,6 +1079,8 @@ def cylinder(
             inner_radius=r_inner,
             outer_radius=r_outer,
             height=height,
+            floor_thickness=floor_thickness,
+            roof_thickness=roof_thickness,
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
