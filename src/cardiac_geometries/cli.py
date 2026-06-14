@@ -742,7 +742,7 @@ def slab_in_bath(
 )
 @click.option(
     "--char-length",
-    default=10.0,
+    default=5.0,
     type=float,
     help="Characteristic length of mesh",
     show_default=True,
@@ -756,7 +756,7 @@ def slab_in_bath(
 )
 @click.option(
     "--r-outer",
-    default=20.0,
+    default=15.0,
     type=float,
     help="Outer radius of the cylinder",
     show_default=True,
@@ -766,6 +766,20 @@ def slab_in_bath(
     default=40.0,
     type=float,
     help="Height of the cylinder",
+    show_default=True,
+)
+@click.option(
+    "--floor-thickness",
+    default=0.0,
+    type=float,
+    help="Thickness of the floor",
+    show_default=True,
+)
+@click.option(
+    "--roof-thickness",
+    default=0.0,
+    type=float,
+    help="Thickness of the roof",
     show_default=True,
 )
 @click.option(
@@ -808,10 +822,12 @@ def slab_in_bath(
 )
 def cylinder(
     outdir: Path,
-    char_length: float = 10.0,
+    char_length: float = 5.0,
     r_inner: float = 10.0,
-    r_outer: float = 20.0,
+    r_outer: float = 15.0,
     height: float = 40.0,
+    floor_thickness: float = 0.0,
+    roof_thickness: float = 0.0,
     create_fibers: bool = False,
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
@@ -826,6 +842,8 @@ def cylinder(
         r_inner=r_inner,
         r_outer=r_outer,
         height=height,
+        floor_thickness=floor_thickness,
+        roof_thickness=roof_thickness,
         char_length=char_length,
         create_fibers=create_fibers,
         fiber_angle_endo=fiber_angle_endo,
