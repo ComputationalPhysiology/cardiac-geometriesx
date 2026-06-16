@@ -1536,20 +1536,34 @@ def cylinder_D_shaped(
                 default=utils.json_serial,
             )
 
-        cgc.cylinder_cut(
-            inner_radius=r_inner,
-            outer_radius=r_outer,
-            inner_flat_face_distance=inner_flat_face_distance,
-            outer_flat_face_distance=outer_flat_face_distance,
-            floor_thickness=floor_thickness,
-            roof_thickness=roof_thickness,
-            height=height,
-            mesh_name=mesh_name.as_posix(),
-            char_length=char_length,
-            verbose=verbose,
-            mode="d_shaped",
-            fillet_radius=fillet_radius,
-        )
+        if fillet_radius is not None and np.isclose(fillet_radius, 0.0):
+            cgc.cylinder_D_shaped(
+                inner_radius=r_inner,
+                outer_radius=r_outer,
+                inner_flat_face_distance=inner_flat_face_distance,
+                outer_flat_face_distance=outer_flat_face_distance,
+                floor_thickness=floor_thickness,
+                roof_thickness=roof_thickness,
+                height=height,
+                mesh_name=mesh_name.as_posix(),
+                char_length=char_length,
+                verbose=verbose,
+            )
+        else:
+            cgc.cylinder_cut(
+                inner_radius=r_inner,
+                outer_radius=r_outer,
+                inner_flat_face_distance=inner_flat_face_distance,
+                outer_flat_face_distance=outer_flat_face_distance,
+                floor_thickness=floor_thickness,
+                roof_thickness=roof_thickness,
+                height=height,
+                mesh_name=mesh_name.as_posix(),
+                char_length=char_length,
+                verbose=verbose,
+                mode="d_shaped",
+                fillet_radius=fillet_radius,
+            )
 
     comm.barrier()
 
