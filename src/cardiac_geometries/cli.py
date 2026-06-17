@@ -1156,6 +1156,20 @@ def cylinder_racetrack(
     show_default=True,
 )
 @click.option(
+    "--floor-thickness",
+    default=0.0,
+    type=float,
+    help="Thickness of the floor",
+    show_default=True,
+)
+@click.option(
+    "--roof-thickness",
+    default=0.0,
+    type=float,
+    help="Thickness of the roof",
+    show_default=True,
+)
+@click.option(
     "--create-fibers",
     default=False,
     is_flag=True,
@@ -1208,6 +1222,8 @@ def cylinder_D_shaped(
     height: float = 40.0,
     inner_flat_face_distance: float = 10.0,
     outer_flat_face_distance: float = 17.0,
+    floor_thickness: float = 0.0,
+    roof_thickness: float = 0.0,
     create_fibers: bool = False,
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
@@ -1225,6 +1241,8 @@ def cylinder_D_shaped(
         height=height,
         inner_flat_face_distance=inner_flat_face_distance,
         outer_flat_face_distance=outer_flat_face_distance,
+        floor_thickness=floor_thickness,
+        roof_thickness=roof_thickness,
         char_length=char_length,
         create_fibers=create_fibers,
         fiber_angle_endo=fiber_angle_endo,
