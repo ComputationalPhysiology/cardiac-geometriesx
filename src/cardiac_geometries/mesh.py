@@ -1437,6 +1437,8 @@ def cylinder_D_shaped(
     height: float = 40.0,
     inner_flat_face_distance: float = 10.0,
     outer_flat_face_distance: float = 17.0,
+    floor_thickness: float = 0.0,
+    roof_thickness: float = 0.0,
     char_length: float = 10.0,
     create_fibers: bool = False,
     fiber_angle_endo: float = 60,
@@ -1468,6 +1470,10 @@ def cylinder_D_shaped(
     outer_flat_face_distance : float
         The distance of the outer flat face from the center (along the x-axis).
         This value must be less than outer_radius. Default is 17.0.
+    floor_thickness : float, optional
+        Thickness of the floor, by default 0.0
+    roof_thickness : float, optional
+        Thickness of the roof, by default 0.0
     char_length : float, optional
         Characteristic length of mesh, by default 10.0
     create_fibers : bool, optional
@@ -1505,6 +1511,8 @@ def cylinder_D_shaped(
         "height": height,
         "inner_flat_face_distance": inner_flat_face_distance,
         "outer_flat_face_distance": outer_flat_face_distance,
+        "floor_thickness": floor_thickness,
+        "roof_thickness": roof_thickness,
         "char_length": char_length,
         "create_fibers": create_fibers,
         "fiber_angle_endo": fiber_angle_endo,
@@ -1528,18 +1536,34 @@ def cylinder_D_shaped(
                 default=utils.json_serial,
             )
 
-        cgc.cylinder_cut(
-            inner_radius=r_inner,
-            outer_radius=r_outer,
-            inner_flat_face_distance=inner_flat_face_distance,
-            outer_flat_face_distance=outer_flat_face_distance,
-            height=height,
-            mesh_name=mesh_name.as_posix(),
-            char_length=char_length,
-            verbose=verbose,
-            mode="d_shaped",
-            fillet_radius=fillet_radius,
-        )
+        if fillet_radius is not None and np.isclose(fillet_radius, 0.0):
+            cgc.cylinder_D_shaped(
+                inner_radius=r_inner,
+                outer_radius=r_outer,
+                inner_flat_face_distance=inner_flat_face_distance,
+                outer_flat_face_distance=outer_flat_face_distance,
+                floor_thickness=floor_thickness,
+                roof_thickness=roof_thickness,
+                height=height,
+                mesh_name=mesh_name.as_posix(),
+                char_length=char_length,
+                verbose=verbose,
+            )
+        else:
+            cgc.cylinder_cut(
+                inner_radius=r_inner,
+                outer_radius=r_outer,
+                inner_flat_face_distance=inner_flat_face_distance,
+                outer_flat_face_distance=outer_flat_face_distance,
+                floor_thickness=floor_thickness,
+                roof_thickness=roof_thickness,
+                height=height,
+                mesh_name=mesh_name.as_posix(),
+                char_length=char_length,
+                verbose=verbose,
+                mode="d_shaped",
+                fillet_radius=fillet_radius,
+            )
 
     comm.barrier()
 
