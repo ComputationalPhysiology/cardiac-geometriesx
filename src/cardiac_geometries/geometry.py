@@ -187,6 +187,7 @@ class Geometry:
     additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function] = field(
         default_factory=dict
     )
+    quadrature_degree: int = 4
 
     def save(self, path: str | Path) -> None:
         """Save the geometry to a file using io4dolfinx.
@@ -259,25 +260,35 @@ class Geometry:
         """Volume measure for the mesh using
         the cell function `cfun` if it exists as subdomain data.
         """
-        return ufl.Measure("dx", domain=self.mesh, subdomain_data=self.cfun)
+        return ufl.Measure(
+            "dx",
+            domain=self.mesh,
+            subdomain_data=self.cfun,
+            metadata={"quadrature_degree": self.quadrature_degree},
+        )
 
     @property
     def ds(self):
         """Surface measure for the mesh using
         the facet function `ffun` if it exists as subdomain data.
         """
-        return ufl.Measure("ds", domain=self.mesh, subdomain_data=self.ffun)
+        return ufl.Measure(
+            "ds",
+            domain=self.mesh,
+            subdomain_data=self.ffun,
+            metadata={"quadrature_degree": self.quadrature_degree},
+        )
 
     @property
     def facet_normal(self) -> ufl.FacetNormal:
         """Facet normal vector for the mesh."""
         return ufl.FacetNormal(self.mesh)
 
-    def refine(
-        self,
-        n=1,
-        outdir: Path | None = None,
-    ) -> "Geometry":
+    @property
+    def facet_tags(self) -> dolfinx.mesh.MeshTags | None:
+        return self.ffun
+
+    def refine(self, n=1, outdir: Path | None = None) -> "Geometry":
         """
         Refine the mesh and transfer the meshtags to new geometry.
         Also regenerate fibers if `self.info` is found.
