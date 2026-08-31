@@ -17,7 +17,7 @@ geox lv-ellipsoid --create-fibers lv-mesh --fiber-space P_2
 
 or using the python API e.g
 ```python
-geo =  cardiac_geometries.mesh.lv_ellipsoid(outdir="lv-mesh", create_fibers=True, fiber_space="P_2")
+geo = cardiac_geometries.mesh.lv_ellipsoid(outdir="lv-mesh", create_fibers=True, fiber_space="P_2")
 ```
 
 ## Install
