@@ -1,6 +1,7 @@
 *.xdmf
 *.h5
 *.msh
+*devcontainer-lock.json
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode

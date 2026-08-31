@@ -444,11 +444,9 @@ def gmsh2dolfin(
     outdir = Path(msh_file).parent
     outdir.mkdir(parents=True, exist_ok=True)
     try:
-        partitioner = dolfinx.cpp.mesh.create_cell_partitioner(
-            ghost_mode, max_facet_to_cell_links=2
-        )
+        partitioner = dolfinx.mesh.create_cell_partitioner(ghost_mode, max_facet_to_cell_links=2)
     except TypeError:
-        partitioner = dolfinx.cpp.mesh.create_cell_partitioner(ghost_mode)
+        partitioner = dolfinx.mesh.create_cell_partitioner(ghost_mode)
 
     if Version(dolfinx.__version__) >= Version("0.10.0"):
         mesh_data = gmshio.read_from_msh(comm=comm, filename=msh_file, partitioner=partitioner)
