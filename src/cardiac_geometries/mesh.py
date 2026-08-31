@@ -243,7 +243,9 @@ def ukb(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
     # geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     # return geo
@@ -419,7 +421,9 @@ def biv_ellipsoid(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
 
     return Geometry(
@@ -558,7 +562,7 @@ def lv_ellipsoid(
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
 
-    kwargs = {"cfun": geometry.cfun}
+    kwargs: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function | None] = {"cfun": geometry.cfun}
     if aha:
         from .aha import lv_aha
 
@@ -621,26 +625,38 @@ def lv_ellipsoid(
         kwargs["s0"] = system.s0
         kwargs["n0"] = system.n0
 
+    cfun = kwargs.get("cfun", None)
+    assert cfun is None or isinstance(cfun, dolfinx.mesh.MeshTags)
+    f0 = kwargs.get("f0", None)
+    assert f0 is None or isinstance(f0, dolfinx.fem.Function)
+    s0 = kwargs.get("s0", None)
+    assert s0 is None or isinstance(s0, dolfinx.fem.Function)
+    n0 = kwargs.get("n0", None)
+    assert n0 is None or isinstance(n0, dolfinx.fem.Function)
+
     save_geometry(
         path=outdir / "geometry.bp",
         mesh=geometry.mesh,
         markers=markers,
         info=info,
+        cfun=cfun,
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **kwargs,
+        f0=f0,
+        s0=s0,
+        n0=n0,
     )
     return Geometry(
         mesh=geometry.mesh,
         markers=geometry.markers,
-        cfun=kwargs.get("cfun", None),
+        cfun=cfun,
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        f0=kwargs.get("f0", None),
-        s0=kwargs.get("s0", None),
-        n0=kwargs.get("n0", None),
+        f0=f0,
+        s0=s0,
+        n0=n0,
         info=info,
     )
 
@@ -838,6 +854,7 @@ def slab(
     if create_fibers:
         from .fibers.slab import create_microstructure
 
+        assert geometry.ffun is not None
         system = create_microstructure(
             mesh=geometry.mesh,
             ffun=geometry.ffun,
@@ -857,7 +874,9 @@ def slab(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
     return Geometry(
         mesh=geometry.mesh,
@@ -1116,7 +1135,9 @@ def cylinder(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
 
     return Geometry(
@@ -1262,7 +1283,9 @@ def cylinder_elliptical(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
 
     geo = Geometry.from_folder(comm=comm, folder=outdir)
@@ -1413,7 +1436,9 @@ def cylinder_racetrack(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
 
     return Geometry(
@@ -1597,7 +1622,9 @@ def cylinder_D_shaped(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
-        **fibers,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
     )
 
     return Geometry(

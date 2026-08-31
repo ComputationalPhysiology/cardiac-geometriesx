@@ -1,7 +1,8 @@
+import inspect
 import tempfile
 import typing
 import xml.etree.ElementTree as ET
-from enum import Enum
+from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, NamedTuple
@@ -19,7 +20,7 @@ from structlog import get_logger
 try:
     import dolfinx.io.gmsh as gmshio
 except ImportError:
-    import dolfinx.io.gmshio as gmshio  # type: ignore[import]
+    import dolfinx.io.gmshio as gmshio  # type: ignore[import,no-redef]
 
 logger = get_logger()
 
@@ -47,7 +48,10 @@ def distribute_entity_data(
         )
     else:
         local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-            mesh._cpp_object, tdim, marked_entities, entity_values
+            mesh._cpp_object,  # type: ignore[arg-type]
+            tdim,
+            marked_entities,
+            entity_values,
         )
     return local_entities, local_values
 
@@ -98,7 +102,9 @@ def model_to_mesh(
         assert model is not None, "Gmsh model is None on rank responsible for mesh creation."
         # Get mesh geometry and mesh topology for each element
         x = gmshio.extract_geometry(model)
-        topologies = gmshio.extract_topology_and_markers(model)
+        # Older dolfinx (<0.10) returns just the topologies dict here, while
+        # newer versions return a (topologies, physical_groups) tuple.
+        topologies = typing.cast(dict, gmshio.extract_topology_and_markers(model))
 
         # Extract Gmsh cell id, dimension of cell and number of nodes to
         # cell for each
@@ -182,8 +188,14 @@ def model_to_mesh(
         dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), num_nodes
     )
     cells = cells[:, gmsh_cell_perm].copy()
+    # Older dolfinx (<0.7) has create_mesh(comm, cells, x, domain, ...); newer
+    # versions swap the last two positional arguments to (domain, x).
     mesh = dolfinx.mesh.create_mesh(
-        comm, cells, x[:, :gdim].astype(dtype, copy=False), ufl_domain, partitioner
+        comm,
+        cells,
+        x[:, :gdim].astype(dtype, copy=False),  # type: ignore[arg-type]
+        ufl_domain,  # type: ignore[arg-type]
+        partitioner,
     )
 
     # Create MeshTags for cells
@@ -288,14 +300,14 @@ def parse_element(
     """
 
     family_str, degree_str = space_string.split("_")
-    kwargs = {"degree": int(degree_str), "cell": mesh.basix_cell()}
+    kwargs: dict[str, typing.Any] = {"degree": int(degree_str), "cell": mesh.basix_cell()}
     if dim > 1:
         if family_str in quads:
             kwargs["value_shape"] = (dim,)
         else:
             kwargs["shape"] = (dim,)
 
-    # breakpoint()
+    el: basix.ufl._ElementBase
     if family_str in ["Lagrange", "P", "CG"]:
         el = basix.ufl.element(family=basix.ElementFamily.P, discontinuous=discontinuous, **kwargs)
     elif family_str in ["Discontinuous Lagrange", "DG", "dP"]:
@@ -312,7 +324,7 @@ def parse_element(
 
 def space_from_string(
     space_string: str, mesh: dolfinx.mesh.Mesh, dim: int, discontinuous: bool = False
-) -> dolfinx.fem.functionspace:
+) -> dolfinx.fem.FunctionSpace:
     """
     Constructed a finite elements space from a string
     representation of the space
@@ -351,14 +363,17 @@ def element2array(el: basix.ufl._BlockedElement) -> np.ndarray:
         )
 
 
-def number2Enum(num: int, enum: Iterable) -> Enum:
+_E = typing.TypeVar("_E", bound=IntEnum)
+
+
+def number2Enum(num: int, enum: Iterable[_E]) -> _E:
     for e in enum:
         if int(e) == num:
             return e
     raise ValueError(f"Invalid value {num} for enum {enum}")
 
 
-def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
+def array2element(arr: np.ndarray) -> basix.ufl._ElementBase:
     cell_type = number2Enum(arr[1], basix.CellType)
     degree = int(arr[2])
     discontinuous = bool(arr[3])
@@ -381,7 +396,7 @@ def array2element(arr: np.ndarray) -> basix.finite_element.FiniteElement:
 
 
 @lru_cache
-def array2functionspace(mesh: dolfinx.mesh.Mesh, arr: np.ndarray) -> dolfinx.fem.functionspace:
+def array2functionspace(mesh: dolfinx.mesh.Mesh, arr: np.ndarray) -> dolfinx.fem.FunctionSpace:
     el = array2element(arr)
     return dolfinx.fem.functionspace(mesh, el)
 
@@ -435,7 +450,7 @@ def read_mesh(
 
 
 def gmsh2dolfin(
-    comm: MPI.Intracomm,
+    comm: MPI.Comm,
     msh_file,
     rank: int = 0,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
@@ -443,10 +458,17 @@ def gmsh2dolfin(
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
     outdir.mkdir(parents=True, exist_ok=True)
-    try:
-        partitioner = dolfinx.mesh.create_cell_partitioner(ghost_mode, max_facet_to_cell_links=2)
-    except TypeError:
-        partitioner = dolfinx.mesh.create_cell_partitioner(ghost_mode)
+
+    if not hasattr(dolfinx.mesh, "create_cell_partitioner"):
+        partitioner = dolfinx.graph.partitioner()
+    else:
+        sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+        part_kwargs = {}
+
+        if "max_facet_to_cell_links" in sig.parameters:
+            part_kwargs["max_facet_to_cell_links"] = 2
+
+        partitioner = dolfinx.mesh.create_cell_partitioner(ghost_mode, **part_kwargs)
 
     if Version(dolfinx.__version__) >= Version("0.10.0"):
         mesh_data = gmshio.read_from_msh(comm=comm, filename=msh_file, partitioner=partitioner)
@@ -466,7 +488,7 @@ def gmsh2dolfin(
             )
 
         if hasattr(mesh_data, "edge_tags"):
-            et = mesh_data.edge_tags
+            et = mesh_data.edge_tags  # type: ignore[attr-defined]
         else:
             et = mesh_data.ridge_tags
         if et is None:
@@ -474,7 +496,7 @@ def gmsh2dolfin(
                 mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
             )
         if hasattr(mesh_data, "vertex_tags"):
-            vt = mesh_data.vertex_tags
+            vt = mesh_data.vertex_tags  # type: ignore[attr-defined]
         else:
             vt = mesh_data.peak_tags
         if vt is None:
@@ -482,25 +504,38 @@ def gmsh2dolfin(
                 mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
             )
 
-        markers = {k: tuple(reversed(v)) for k, v in markers_.items()}
+        markers = {k: (v[1], v[0]) for k, v in markers_.items()}
 
     else:
         import gmsh
 
         # We could make this work in parallel in the future
 
+        # partitioner is a GraphPartitioner here (from dolfinx.graph.partitioner()),
+        # which is callable but not a plain Callable per the stubs used by model_to_mesh's
+        # (legacy, pre-0.10) partitioner type.
         if comm.rank == rank:
             gmsh.initialize()
             gmsh.model.add("Mesh from file")
             gmsh.merge(str(msh_file))
-            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0, partitioner=partitioner)
+            mesh, ct, ft, et, vt = model_to_mesh(
+                gmsh.model,
+                comm,
+                0,
+                partitioner=partitioner,  # type: ignore[arg-type]
+            )
             markers = {
                 gmsh.model.getPhysicalName(*v): tuple(reversed(v))
                 for v in gmsh.model.getPhysicalGroups()
             }
             gmsh.finalize()
         else:
-            mesh, ct, ft, et, vt = model_to_mesh(gmsh.model, comm, 0, partitioner=partitioner)
+            mesh, ct, ft, et, vt = model_to_mesh(
+                gmsh.model,
+                comm,
+                0,
+                partitioner=partitioner,  # type: ignore[arg-type]
+            )
             markers = {}
 
         markers = comm.bcast(markers, root=rank)
@@ -517,13 +552,13 @@ def gmsh2dolfin(
 
 
 def save_mesh_to_xdmf(
-    comm: MPI.Intracomm,
+    comm: MPI.Comm,
     fname: Path,
     mesh: dolfinx.mesh.Mesh,
-    ct: dolfinx.mesh.MeshTags,
-    ft: dolfinx.mesh.MeshTags,
-    et: dolfinx.mesh.MeshTags,
-    vt: dolfinx.mesh.MeshTags,
+    ct: dolfinx.mesh.MeshTags | None,
+    ft: dolfinx.mesh.MeshTags | None,
+    et: dolfinx.mesh.MeshTags | None,
+    vt: dolfinx.mesh.MeshTags | None,
 ):
     # Save tags to xdmf
     with dolfinx.io.XDMFFile(comm, fname, "w") as xdmf:
@@ -678,6 +713,7 @@ def compute_base_data(
     base_centroid = np.zeros(3)
     base_normal = np.zeros(3)
     if mesh.comm.rank == 0:
+        assert base_midpoints is not None
         bm = np.concatenate(base_midpoints)
         base_centroid = bm.mean(axis=0)
         # print("Base centroid", len(base_midpoints))

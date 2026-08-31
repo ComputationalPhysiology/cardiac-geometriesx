@@ -200,6 +200,8 @@ def lv_aha(
 
     dmu = (np.pi - mu_base) * dmu_factor
     _, mu, phi = cartesian_to_prolate_ellipsoidal(x, y, z, a=foc)
+    mu = np.asarray(mu)
+    phi = np.asarray(phi)
     entities = [
         find_region_entities(mu=mu, phi=phi, mu_base=mu_base, region=region, dmu=dmu)
         for region in range(1, 18)

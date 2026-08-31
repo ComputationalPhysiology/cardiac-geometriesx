@@ -43,7 +43,8 @@
   "mounts": [
     "source=${localEnv:HOME}/.zshrc,target=/root/.zshrc,type=bind,readonly",
     "source=${localEnv:HOME}/.oh-my-zsh,target=/root/.oh-my-zsh,type=bind,readonly",
-    "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,readonly"
+    "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude-work,target=/root/.claude-work,type=bind"
   ],
 
   "remoteUser": "root"
