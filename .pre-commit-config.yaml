@@ -27,3 +27,4 @@ repos:
     rev: v2.3.1
     hooks:
       - id: mypy
+        language: system

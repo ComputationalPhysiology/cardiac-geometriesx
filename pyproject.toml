@@ -37,6 +37,7 @@ dev = [
     "pre-commit",
     "twine",
     "wheel",
+    "mypy",
 ]
 docs = [
     "jupyter-book<2.0",
@@ -66,6 +67,11 @@ gui = [
     "ipywidgets",
     "fenicsx-ldrb",
 
+]
+all = [
+    "cardiac-geometriesx[docs]",
+    "cardiac-geometriesx[test]",
+    "cardiac-geometriesx[dev]",
 ]
 
 [project.scripts]
