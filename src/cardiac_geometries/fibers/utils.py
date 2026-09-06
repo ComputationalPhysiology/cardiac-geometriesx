@@ -110,9 +110,14 @@ def laplace(
 
     # petsc_options_prefix became a required keyword argument in dolfinx 0.10.
     problem = LinearProblem(  # type: ignore[call-overload]
-        a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"}, **kwargs
+        a,
+        L,
+        bcs=bcs,
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        **kwargs,  # type: ignore[arg-type]
     )
     uh = problem.solve()
+    assert isinstance(uh, dolfinx.fem.Function)
 
     if function_space != "P_1":
         W = space_from_string(function_space, mesh, dim=1)
