@@ -53,7 +53,9 @@ def save_microstructure(
             viz_path = viz_path.with_suffix(".bp")
             shutil.rmtree(viz_path, ignore_errors=True)
             try:
-                with dolfinx.io.VTXWriter(mesh.comm, viz_path, functions, engine="BP4") as file:
+                with dolfinx.io.VTXWriter(
+                    mesh.comm, viz_path, list(functions), engine="BP4"
+                ) as file:
                     file.write(0.0)
             except RuntimeError as ex:
                 print(f"Failed to write microstructure: {ex}")
@@ -102,14 +104,20 @@ def laplace(
 
     bcs = [endo_bc, epi_bc]
 
-    kwargs = {}
+    kwargs: dict[str, str] = {}
     if _dolfinx_version >= Version("0.10"):
         kwargs["petsc_options_prefix"] = "cardiac_geometriesx_laplace"
 
-    problem = LinearProblem(
-        a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"}, **kwargs
+    # petsc_options_prefix became a required keyword argument in dolfinx 0.10.
+    problem = LinearProblem(  # type: ignore[call-overload]
+        a,
+        L,
+        bcs=bcs,
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        **kwargs,  # type: ignore[arg-type]
     )
     uh = problem.solve()
+    assert isinstance(uh, dolfinx.fem.Function)
 
     if function_space != "P_1":
         W = space_from_string(function_space, mesh, dim=1)
@@ -117,7 +125,8 @@ def laplace(
         if _dolfinx_version >= Version("0.10"):
             points = W.element.interpolation_points
         else:
-            points = W.element.interpolation_points()
+            # interpolation_points became a property (instead of a method) in dolfinx 0.10.
+            points = W.element.interpolation_points()  # type: ignore[operator]
 
         expr = dolfinx.fem.Expression(uh, points)
         t.interpolate(expr)

@@ -27,3 +27,7 @@ repos:
     rev: v2.3.1
     hooks:
       - id: mypy
+        language: system
+        files: ^(src/cardiac_geometries/|tests/)
+        pass_filenames: false
+        args: []

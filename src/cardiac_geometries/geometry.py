@@ -38,7 +38,7 @@ def save_additional_data(
     path: Path,
     mesh: dolfinx.mesh.Mesh,
 ) -> None:
-    additional_data_attributes = {}
+    additional_data_attributes: dict[str, dict[str, Any]] = {}
     for name, data in additional_data.items():
         if isinstance(data, dolfinx.mesh.MeshTags):
             io4dolfinx.write_meshtags(
@@ -326,6 +326,7 @@ class Geometry:
                 partitioner=None,
                 option=dolfinx.mesh.RefinementOption.parent_cell_and_facet,
             )
+            assert parent_cell is not None
             new_mesh.name = mesh.name
             mesh = new_mesh
             new_mesh.topology.create_entities(1)
@@ -391,7 +392,7 @@ class Geometry:
     @classmethod
     def from_file(
         cls,
-        comm: MPI.Intracomm,
+        comm: MPI.Comm,
         path: str | Path,
         ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     ) -> "Geometry":
@@ -399,7 +400,7 @@ class Geometry:
 
         Parameters
         ----------
-        comm : MPI.Intracomm
+        comm : MPI.Comm
             The MPI communicator to use for reading the mesh.
         path : str | Path
             The path to the file containing the geometry data.
@@ -443,7 +444,7 @@ class Geometry:
         )
 
         # markers = io4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
-        tags = {}
+        tags: dict[str, dolfinx.mesh.MeshTags | None] = {}
         for name, meshtag_name in (
             ("cfun", "Cell tags"),
             ("ffun", "Facet tags"),
@@ -458,7 +459,7 @@ class Geometry:
                 logger.debug(f"{name} not found in {path}")
                 tags[name] = None
 
-        functions = {}
+        functions: dict[str, dolfinx.fem.Function] = {}
         # if function_space_data is None:
         #     function_space_data = io4dolfinx.read_attributes(
         #         comm=comm, filename=path, name="function_space"
@@ -490,14 +491,19 @@ class Geometry:
             markers=markers,
             info=info,
             additional_data=additional_data,
-            **functions,
-            **tags,
+            cfun=tags.get("cfun"),
+            ffun=tags.get("ffun"),
+            efun=tags.get("efun"),
+            vfun=tags.get("vfun"),
+            f0=functions.get("f0"),
+            s0=functions.get("s0"),
+            n0=functions.get("n0"),
         )
 
     @classmethod
     def from_folder(
         cls,
-        comm: MPI.Intracomm,
+        comm: MPI.Comm,
         folder: str | Path,
         ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     ) -> "Geometry":
@@ -505,7 +511,7 @@ class Geometry:
 
         Parameters
         ----------
-        comm : MPI.Intracomm
+        comm : MPI.Comm
             The MPI communicator to use for reading the mesh and markers.
         folder : str | Path
             The path to the folder containing the geometry data.
@@ -569,7 +575,7 @@ class Geometry:
         else:
             microstructure = {}
 
-        functions = {}
+        functions: dict[str, dolfinx.fem.Function] = {}
         microstructure_path = folder / "microstructure.bp"
         if microstructure_path.exists():
             logger.debug("Reading microstructure")
@@ -602,8 +608,13 @@ class Geometry:
             mesh=mesh,
             markers=markers,
             info=info,
-            **functions,
-            **tags,
+            cfun=tags.get("cfun"),
+            ffun=tags.get("ffun"),
+            efun=tags.get("efun"),
+            vfun=tags.get("vfun"),
+            f0=functions.get("f0"),
+            s0=functions.get("s0"),
+            n0=functions.get("n0"),
         )
 
     def rotate(self, target_normal, base_marker):
