@@ -26,6 +26,7 @@
 
   // Automatically run your editable install every time the container is built/started
   "postCreateCommand": ".devcontainer/setup.sh",
+  "postAttachCommand": "bash .devcontainer/setup-claude-plugins.sh",
 
   // Recommended VS Code extensions to run inside the container
   "customizations": {
@@ -34,7 +35,8 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "tamasfe.even-better-toml",
-        "streetsidesoftware.code-spell-checker"
+        "streetsidesoftware.code-spell-checker",
+        "anthropic.claude-code"
       ]
     }
   },
