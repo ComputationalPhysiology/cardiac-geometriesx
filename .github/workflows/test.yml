@@ -25,7 +25,7 @@ jobs:
 
       - name: Install build requirements
         run: |
-          python3 -m pip install -r https://raw.githubusercontent.com/scientificcomputing/scifem/refs/heads/main/build-requirements.txt
+          python3 -m pip install --group build
 
       - name: Install developement version of scifem and io4dolfinx
         if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
@@ -35,7 +35,6 @@ jobs:
 
       - name: Install package
         run: |
-          python3 -m pip install -r https://raw.githubusercontent.com/scientificcomputing/scifem/refs/heads/main/build-requirements.txt
           python3 -m pip install scifem --no-build-isolation
           python3 -m pip install -e .[test]
 
