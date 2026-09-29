@@ -57,7 +57,7 @@ def save_microstructure(
                     mesh.comm, viz_path, list(functions), engine="BP4"
                 ) as file:
                     file.write(0.0)
-            except RuntimeError as ex:
+            except (RuntimeError, ValueError) as ex:
                 print(f"Failed to write microstructure: {ex}")
 
     # Save with proper function space
