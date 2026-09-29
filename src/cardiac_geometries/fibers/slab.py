@@ -168,7 +168,7 @@ def create_microstructure(
         try:
             with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / "laplace.bp", [t]) as file:
                 file.write(0.0)
-        except RuntimeError:
+        except (RuntimeError, ValueError):
             pass
 
     system = compute_system(

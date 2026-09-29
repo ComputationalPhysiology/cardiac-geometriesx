@@ -74,7 +74,7 @@ def create_microstructure(
             try:
                 with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / "laplace_flat.bp", [t]) as file:
                     file.write(0.0)
-            except RuntimeError:
+            except (RuntimeError, ValueError):
                 pass
 
         system_flat = slab.compute_system(
@@ -106,7 +106,7 @@ def create_microstructure(
                     mesh.comm, Path(outdir) / "laplace_flat1.bp", [t]
                 ) as file:
                     file.write(0.0)
-            except RuntimeError:
+            except (RuntimeError, ValueError):
                 pass
 
         system_flat1 = slab.compute_system(
@@ -135,7 +135,7 @@ def create_microstructure(
                     mesh.comm, Path(outdir) / "laplace_flat2.bp", [t]
                 ) as file:
                     file.write(0.0)
-            except RuntimeError:
+            except (RuntimeError, ValueError):
                 pass
 
         system_flat1 = slab.compute_system(
