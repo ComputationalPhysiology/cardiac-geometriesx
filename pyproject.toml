@@ -21,9 +21,10 @@ classifiers = [
 ]
 keywords = ["cardiac", "geometry"]
 urls = {Homepage = "https://github.com/finsberg/cardiac-geometriesx" }
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
-    "fenics-dolfinx>=0.9.0",
+    "fenics-dolfinx>=0.10.0",
+    "fenicsx-compat>=0.3.0",
     "structlog",
     "cardiac-geometries-core>=0.4",
     "rich-click",
@@ -54,7 +55,7 @@ docs = [
     "trame-vuetify",
     "ipywidgets",
     "fenicsx-ldrb",
-    "ukb-atlas",
+    "ukb-atlas>=1.5",
     "sphinx-codeautolink",
     "sphinx-copybutton",
 ]
@@ -62,7 +63,7 @@ test = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ukb-atlas[pyvista]",
+    "ukb-atlas[pyvista]>=1.5",
     "fenicsx-ldrb",
 ]
 gui = [
@@ -155,8 +156,8 @@ exclude = [
 # Same as Black.
 line-length = 100
 
-# Assume Python 3.10.
-target-version = "py310"
+# Assume Python 3.12.
+target-version = "py312"
 
 [tool.ruff.lint]
 # Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.

@@ -1,4 +1,3 @@
-import inspect
 import tempfile
 import typing
 import xml.etree.ElementTree as ET
@@ -11,285 +10,15 @@ from mpi4py import MPI
 
 import basix
 import dolfinx
+import fenicsx_compat
 import numpy as np
 import numpy.typing as npt
-from dolfinx.graph import adjacencylist
-from packaging.version import Version
 from structlog import get_logger
-
-try:
-    import dolfinx.io.gmsh as gmshio
-except ImportError:
-    import dolfinx.io.gmshio as gmshio  # type: ignore[import,no-redef]
 
 logger = get_logger()
 
 quads = ("Quadrature", "Q", "Quad", "quadrature", "q", "quad")
 QUADNR = 42
-
-
-class GMshModel(NamedTuple):
-    mesh: dolfinx.mesh.Mesh
-    cell_tags: dolfinx.mesh.MeshTags
-    facet_tags: dolfinx.mesh.MeshTags
-    edge_tags: dolfinx.mesh.MeshTags
-    vertex_tags: dolfinx.mesh.MeshTags
-
-
-def distribute_entity_data(
-    mesh: dolfinx.mesh.Mesh,
-    tdim: int,
-    marked_entities: np.ndarray,
-    entity_values: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    if Version(dolfinx.__version__) >= Version("0.9.0"):
-        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-            mesh, tdim, marked_entities, entity_values
-        )
-    else:
-        local_entities, local_values = dolfinx.io.utils.distribute_entity_data(
-            mesh._cpp_object,  # type: ignore[arg-type]
-            tdim,
-            marked_entities,
-            entity_values,
-        )
-    return local_entities, local_values
-
-
-# copied from https://github.com/FEniCS/dolfinx/blob/main/python/dolfinx/io/gmshio.py
-def model_to_mesh(
-    model,
-    comm: MPI.Comm,
-    rank: int,
-    gdim: int = 3,
-    partitioner: typing.Optional[
-        typing.Callable[
-            [MPI.Comm, int, int, dolfinx.cpp.graph.AdjacencyList_int32],
-            dolfinx.cpp.graph.AdjacencyList_int32,
-        ]
-    ] = None,
-    dtype=dolfinx.default_real_type,
-) -> GMshModel:
-    """Create a Mesh from a Gmsh model.
-
-    Creates a :class:`dolfinx.mesh.Mesh` from the physical entities of
-    the highest topological dimension in the Gmsh model. In parallel,
-    the gmsh model is processed on one MPI rank, and the
-    :class:`dolfinx.mesh.Mesh` is distributed across ranks.
-
-    Args:
-        model: Gmsh model.
-        comm: MPI communicator to use for mesh creation.
-        rank: MPI rank that the Gmsh model is initialized on.
-        gdim: Geometrical dimension of the mesh.
-        partitioner: Function that computes the parallel
-            distribution of cells across MPI ranks.
-
-    Returns:
-        A tuple containing the :class:`dolfinx.mesh.Mesh` and
-        :class:`dolfinx.mesh.MeshTags` for cells, facets, edges and
-        vertices.
-
-
-    Note:
-        For performance, this function should only be called once for
-        large problems. For re-use, it is recommended to save the mesh
-        and corresponding tags using :class:`dolfinxio.XDMFFile` after
-        creation for efficient access.
-
-    """
-    if comm.rank == rank:
-        assert model is not None, "Gmsh model is None on rank responsible for mesh creation."
-        # Get mesh geometry and mesh topology for each element
-        x = gmshio.extract_geometry(model)
-        # Older dolfinx (<0.10) returns just the topologies dict here, while
-        # newer versions return a (topologies, physical_groups) tuple.
-        topologies = typing.cast(dict, gmshio.extract_topology_and_markers(model))
-
-        # Extract Gmsh cell id, dimension of cell and number of nodes to
-        # cell for each
-        num_cell_types = len(topologies.keys())
-        cell_information = dict()
-        cell_dimensions = np.zeros(num_cell_types, dtype=np.int32)
-        for i, element in enumerate(topologies.keys()):
-            _, dim, _, num_nodes, _, _ = model.mesh.getElementProperties(element)
-            cell_information[i] = {"id": element, "dim": dim, "num_nodes": num_nodes}
-            cell_dimensions[i] = dim
-
-        # Sort elements by ascending dimension
-        perm_sort = np.argsort(cell_dimensions)
-
-        # Broadcast cell type data and geometric dimension
-        cell_id = cell_information[perm_sort[-1]]["id"]
-        tdim = cell_information[perm_sort[-1]]["dim"]
-        num_nodes = cell_information[perm_sort[-1]]["num_nodes"]
-        cell_id, num_nodes = comm.bcast([cell_id, num_nodes], root=rank)
-
-        # Check for facet data and broadcast relevant info if True
-        has_facet_data = False
-        if tdim - 1 in cell_dimensions:
-            has_facet_data = True
-        has_edge_data = False
-        if tdim - 2 in cell_dimensions:
-            has_edge_data = True
-        has_vertex_data = False
-        if tdim - 3 in cell_dimensions:
-            has_vertex_data = True
-
-        has_facet_data = comm.bcast(has_facet_data, root=rank)
-        if has_facet_data:
-            num_facet_nodes = comm.bcast(cell_information[perm_sort[-2]]["num_nodes"], root=rank)
-            gmsh_facet_id = cell_information[perm_sort[-2]]["id"]
-            marked_facets = np.asarray(topologies[gmsh_facet_id]["topology"], dtype=np.int64)
-            facet_values = np.asarray(topologies[gmsh_facet_id]["cell_data"], dtype=np.int32)
-
-        has_edge_data = comm.bcast(has_edge_data, root=rank)
-        if has_edge_data:
-            num_edge_nodes = comm.bcast(cell_information[perm_sort[-3]]["num_nodes"], root=rank)
-            gmsh_edge_id = cell_information[perm_sort[-3]]["id"]
-            marked_edges = np.asarray(topologies[gmsh_edge_id]["topology"], dtype=np.int64)
-            edge_values = np.asarray(topologies[gmsh_edge_id]["cell_data"], dtype=np.int32)
-
-        has_vertex_data = comm.bcast(has_vertex_data, root=rank)
-        if has_vertex_data:
-            num_vertex_nodes = comm.bcast(cell_information[perm_sort[-4]]["num_nodes"], root=rank)
-            gmsh_vertex_id = cell_information[perm_sort[-4]]["id"]
-            marked_vertices = np.asarray(topologies[gmsh_vertex_id]["topology"], dtype=np.int64)
-            vertex_values = np.asarray(topologies[gmsh_vertex_id]["cell_data"], dtype=np.int32)
-
-        cells = np.asarray(topologies[cell_id]["topology"], dtype=np.int64)
-        cell_values = np.asarray(topologies[cell_id]["cell_data"], dtype=np.int32)
-    else:
-        cell_id, num_nodes = comm.bcast([None, None], root=rank)
-        cells, x = np.empty([0, num_nodes], dtype=np.int32), np.empty([0, gdim], dtype=dtype)
-        cell_values = np.empty((0,), dtype=np.int32)
-
-        has_facet_data = comm.bcast(None, root=rank)
-        if has_facet_data:
-            num_facet_nodes = comm.bcast(None, root=rank)
-            marked_facets = np.empty((0, num_facet_nodes), dtype=np.int32)
-            facet_values = np.empty((0,), dtype=np.int32)
-
-        has_edge_data = comm.bcast(None, root=rank)
-        if has_edge_data:
-            num_edge_nodes = comm.bcast(None, root=rank)
-            marked_edges = np.empty((0, num_edge_nodes), dtype=np.int32)
-            edge_values = np.empty((0,), dtype=np.int32)
-
-        has_vertex_data = comm.bcast(None, root=rank)
-        if has_vertex_data:
-            num_vertex_nodes = comm.bcast(None, root=rank)
-            marked_vertices = np.empty((0, num_vertex_nodes), dtype=np.int32)
-            vertex_values = np.empty((0,), dtype=np.int32)
-
-    # Create distributed mesh
-    ufl_domain = gmshio.ufl_mesh(cell_id, gdim, dtype=dtype)
-    gmsh_cell_perm = gmshio.cell_perm_array(
-        dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), num_nodes
-    )
-    cells = cells[:, gmsh_cell_perm].copy()
-    # Older dolfinx (<0.7) has create_mesh(comm, cells, x, domain, ...); newer
-    # versions swap the last two positional arguments to (domain, x).
-    mesh = dolfinx.mesh.create_mesh(
-        comm,
-        cells,
-        x[:, :gdim].astype(dtype, copy=False),  # type: ignore[arg-type]
-        ufl_domain,  # type: ignore[arg-type]
-        partitioner,
-    )
-
-    # Create MeshTags for cells
-    local_entities, local_values = distribute_entity_data(
-        mesh, mesh.topology.dim, cells, cell_values
-    )
-
-    mesh.topology.create_connectivity(mesh.topology.dim, 0)
-    # adj = dolfinx.cpp.graph.AdjacencyList_int32(local_entities)
-    adj = adjacencylist(local_entities)
-    ct = dolfinx.mesh.meshtags_from_entities(
-        mesh, mesh.topology.dim, adj, local_values.astype(np.int32, copy=False)
-    )
-    ct.name = "Cell tags"
-
-    # Create MeshTags for facets
-    topology = mesh.topology
-    tdim = topology.dim
-    if has_facet_data:
-        # Permute facets from MSH to DOLFINx ordering
-        # FIXME: This does not work for prism meshes
-        if (
-            topology.cell_type == dolfinx.mesh.CellType.prism
-            or topology.cell_type == dolfinx.mesh.CellType.pyramid
-        ):
-            raise RuntimeError(f"Unsupported cell type {topology.cell_type}")
-
-        facet_type = dolfinx.cpp.mesh.cell_entity_type(
-            dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), tdim - 1, 0
-        )
-        gmsh_facet_perm = gmshio.cell_perm_array(facet_type, num_facet_nodes)
-        marked_facets = marked_facets[:, gmsh_facet_perm]
-
-        local_entities, local_values = distribute_entity_data(
-            mesh, mesh.topology.dim - 1, marked_facets, facet_values
-        )
-
-        mesh.topology.create_connectivity(topology.dim - 1, tdim)
-        adj = adjacencylist(local_entities)
-
-        ft = gmshio.meshtags_from_entities(
-            mesh, tdim - 1, adj, local_values.astype(np.int32, copy=False)
-        )
-        ft.name = "Facet tags"
-    else:
-        ft = dolfinx.mesh.meshtags(
-            mesh, tdim - 1, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-        )
-
-    if has_edge_data:
-        # Permute edges from MSH to DOLFINx ordering
-        edge_type = dolfinx.cpp.mesh.cell_entity_type(
-            dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), tdim - 2, 0
-        )
-        gmsh_edge_perm = gmshio.cell_perm_array(edge_type, num_edge_nodes)
-        marked_edges = marked_edges[:, gmsh_edge_perm]
-
-        local_entities, local_values = distribute_entity_data(
-            mesh, tdim - 2, marked_edges, edge_values
-        )
-        mesh.topology.create_connectivity(topology.dim - 2, tdim)
-        adj = adjacencylist(local_entities)
-        et = gmshio.meshtags_from_entities(
-            mesh, tdim - 2, adj, local_values.astype(np.int32, copy=False)
-        )
-        et.name = "Edge tags"
-    else:
-        et = dolfinx.mesh.meshtags(
-            mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-        )
-
-    if has_vertex_data:
-        # Permute vertices from MSH to DOLFINx ordering
-        vertex_type = dolfinx.cpp.mesh.cell_entity_type(
-            dolfinx.cpp.mesh.to_type(str(ufl_domain.ufl_cell())), tdim - 3, 0
-        )
-        gmsh_vertex_perm = gmshio.cell_perm_array(vertex_type, num_vertex_nodes)
-        marked_vertices = marked_vertices[:, gmsh_vertex_perm]
-
-        local_entities, local_values = distribute_entity_data(
-            mesh, tdim - 3, marked_vertices, vertex_values
-        )
-        mesh.topology.create_connectivity(topology.dim - 3, tdim)
-        adj = adjacencylist(local_entities)
-        vt = gmshio.meshtags_from_entities(
-            mesh, tdim - 3, adj, local_values.astype(np.int32, copy=False)
-        )
-        vt.name = "Vertex tags"
-    else:
-        vt = dolfinx.mesh.meshtags(
-            mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-        )
-
-    return GMshModel(mesh, ct, ft, et, vt)
 
 
 def parse_element(
@@ -459,86 +188,49 @@ def gmsh2dolfin(
     outdir = Path(msh_file).parent
     outdir.mkdir(parents=True, exist_ok=True)
 
-    if not hasattr(dolfinx.mesh, "create_cell_partitioner"):
-        partitioner = dolfinx.graph.partitioner()
+    import gmsh
+
+    if comm.rank == rank:
+        gmsh.initialize()
+        gmsh.model.add("Mesh from file")
+        gmsh.merge(str(msh_file))
+    mesh_data = fenicsx_compat.model_to_mesh(gmsh.model, comm, rank, ghost_mode=ghost_mode)
+    if comm.rank == rank:
+        gmsh.finalize()
+
+    mesh = mesh_data.mesh
+    markers_ = mesh_data.physical_groups
+    ct = mesh_data.cell_tags
+    tdim = mesh.topology.dim
+    if ct is None:
+        ct = dolfinx.mesh.meshtags(
+            mesh, tdim, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+        )
+
+    ft = mesh_data.facet_tags
+    if ft is None:
+        ft = dolfinx.mesh.meshtags(
+            mesh, tdim - 1, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+        )
+
+    if hasattr(mesh_data, "edge_tags"):
+        et = mesh_data.edge_tags  # type: ignore[attr-defined]
     else:
-        sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
-        part_kwargs = {}
-
-        if "max_facet_to_cell_links" in sig.parameters:
-            part_kwargs["max_facet_to_cell_links"] = 2
-
-        partitioner = dolfinx.mesh.create_cell_partitioner(ghost_mode, **part_kwargs)
-
-    if Version(dolfinx.__version__) >= Version("0.10.0"):
-        mesh_data = gmshio.read_from_msh(comm=comm, filename=msh_file, partitioner=partitioner)
-        mesh = mesh_data.mesh
-        markers_ = mesh_data.physical_groups
-        ct = mesh_data.cell_tags
-        tdim = mesh.topology.dim
-        if ct is None:
-            ct = dolfinx.mesh.meshtags(
-                mesh, tdim, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-            )
-
-        ft = mesh_data.facet_tags
-        if ft is None:
-            ft = dolfinx.mesh.meshtags(
-                mesh, tdim - 1, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-            )
-
-        if hasattr(mesh_data, "edge_tags"):
-            et = mesh_data.edge_tags  # type: ignore[attr-defined]
-        else:
-            et = mesh_data.ridge_tags
-        if et is None:
-            et = dolfinx.mesh.meshtags(
-                mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-            )
-        if hasattr(mesh_data, "vertex_tags"):
-            vt = mesh_data.vertex_tags  # type: ignore[attr-defined]
-        else:
-            vt = mesh_data.peak_tags
-        if vt is None:
-            vt = dolfinx.mesh.meshtags(
-                mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-            )
-
-        markers = {k: (v[1], v[0]) for k, v in markers_.items()}
-
+        et = mesh_data.ridge_tags
+    if et is None:
+        et = dolfinx.mesh.meshtags(
+            mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+        )
+    if hasattr(mesh_data, "vertex_tags"):
+        vt = mesh_data.vertex_tags  # type: ignore[attr-defined]
     else:
-        import gmsh
+        vt = mesh_data.peak_tags
+    if vt is None:
+        vt = dolfinx.mesh.meshtags(
+            mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+        )
 
-        # We could make this work in parallel in the future
-
-        # partitioner is a GraphPartitioner here (from dolfinx.graph.partitioner()),
-        # which is callable but not a plain Callable per the stubs used by model_to_mesh's
-        # (legacy, pre-0.10) partitioner type.
-        if comm.rank == rank:
-            gmsh.initialize()
-            gmsh.model.add("Mesh from file")
-            gmsh.merge(str(msh_file))
-            mesh, ct, ft, et, vt = model_to_mesh(
-                gmsh.model,
-                comm,
-                0,
-                partitioner=partitioner,  # type: ignore[arg-type]
-            )
-            markers = {
-                gmsh.model.getPhysicalName(*v): tuple(reversed(v))
-                for v in gmsh.model.getPhysicalGroups()
-            }
-            gmsh.finalize()
-        else:
-            mesh, ct, ft, et, vt = model_to_mesh(
-                gmsh.model,
-                comm,
-                0,
-                partitioner=partitioner,  # type: ignore[arg-type]
-            )
-            markers = {}
-
-        markers = comm.bcast(markers, root=rank)
+    markers = {k: (v[1], v[0]) for k, v in markers_.items()}
 
     mesh.name = "Mesh"
     ct.name = "Cell tags"

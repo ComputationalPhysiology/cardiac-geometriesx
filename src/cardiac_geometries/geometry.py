@@ -10,7 +10,6 @@ from mpi4py import MPI
 import dolfinx
 import io4dolfinx
 import ufl
-from packaging.version import Version
 
 from . import utils
 
@@ -142,22 +141,20 @@ def save_geometry(
             filename=path,
             meshtag_name="Facet tags",
         )
-    if Version(dolfinx.__version__) >= Version("0.10.0"):
-        # Write edge and vertex tags is buggy in older versions
-        if efun is not None:
-            io4dolfinx.write_meshtags(
-                meshtags=efun,
-                mesh=mesh,
-                filename=path,
-                meshtag_name="Edge tags",
-            )
-        if vfun is not None:
-            io4dolfinx.write_meshtags(
-                meshtags=vfun,
-                mesh=mesh,
-                filename=path,
-                meshtag_name="Vertex tags",
-            )
+    if efun is not None:
+        io4dolfinx.write_meshtags(
+            meshtags=efun,
+            mesh=mesh,
+            filename=path,
+            meshtag_name="Edge tags",
+        )
+    if vfun is not None:
+        io4dolfinx.write_meshtags(
+            meshtags=vfun,
+            mesh=mesh,
+            filename=path,
+            meshtag_name="Vertex tags",
+        )
 
     from .fibers.utils import save_microstructure
 
