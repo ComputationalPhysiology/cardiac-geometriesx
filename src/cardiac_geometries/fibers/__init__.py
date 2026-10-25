@@ -2,6 +2,7 @@ import logging
 
 import dolfinx
 
+from ..utils import extract_submesh, transfer_to_parent
 from . import cylinder, lv_ellipsoid, slab, utils
 from .utils import Microstructure
 
@@ -13,8 +14,26 @@ logger = logging.getLogger(__name__)
 supported_mesh_types = ("slab", "cylinder", "lv_ellipsoid", "biv_ellipsoid", "ukb", "lv", "biv")
 
 
-def generate_fibers_ldrb(mesh: dolfinx.mesh.Mesh, **kwargs) -> Microstructure:
-    # Try with LDRB
+def ldrb_fibers(
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags | None,
+    markers: dict[str, tuple[int, int]],
+    cfun: dolfinx.mesh.MeshTags | None = None,
+    clipped: bool = False,
+    **kwargs,
+):
+    """Create fibers with the LDRB algorithm.
+
+    For geometries where the cavities are meshed as well (marked with
+    ``*_CAVITY``, e.g. the closed UKB geometries), the fibers are computed on
+    the wall (marked ``Wall``) only, and are zero in the cavities.
+
+    Returns
+    -------
+    tuple[ldrb.io.LDRBOutput, Microstructure]
+        The output from LDRB, on the mesh it was computed on (the wall for
+        geometries with cavities), and the fibers on `mesh`.
+    """
     try:
         import ldrb
     except ImportError as ex:
@@ -24,19 +43,28 @@ def generate_fibers_ldrb(mesh: dolfinx.mesh.Mesh, **kwargs) -> Microstructure:
         )
         raise ImportError(msg) from ex
 
-    markers = kwargs.pop("markers", None)
-    clipped = kwargs.pop("clipped", False)
-
     from ..mesh import transform_markers
 
-    markers = transform_markers(markers, clipped=clipped)
+    ldrb_markers = transform_markers(markers, clipped=clipped)
 
-    system = ldrb.dolfinx_ldrb(mesh=mesh, markers=markers, **kwargs)
-    return Microstructure(
-        f0=system.f0,
-        s0=system.s0,
-        n0=system.n0,
+    has_cavities = any(name.endswith("_CAVITY") for name in markers)
+    if not has_cavities or cfun is None or ffun is None:
+        system = ldrb.dolfinx_ldrb(mesh=mesh, ffun=ffun, markers=ldrb_markers, **kwargs)
+        return system, Microstructure(f0=system.f0, s0=system.s0, n0=system.n0)
+
+    wall, wall_ffun, parent_cells = extract_submesh(mesh, cfun, ffun, [markers["Wall"][0]])
+    system = ldrb.dolfinx_ldrb(mesh=wall, ffun=wall_ffun, markers=ldrb_markers, **kwargs)
+    V = dolfinx.fem.functionspace(mesh, system.f0.function_space.ufl_element())
+    return system, Microstructure(
+        f0=transfer_to_parent(system.f0, V, parent_cells),
+        s0=transfer_to_parent(system.s0, V, parent_cells),
+        n0=transfer_to_parent(system.n0, V, parent_cells),
     )
+
+
+def generate_fibers_ldrb(mesh: dolfinx.mesh.Mesh, **kwargs) -> Microstructure:
+    _, microstructure = ldrb_fibers(mesh, **kwargs)
+    return microstructure
 
 
 def generate_fibers(
@@ -45,8 +73,10 @@ def generate_fibers(
     """Generate fibers based on the mesh type."""
 
     kwargs = kwargs.copy()
+    # Only used by LDRB, to compute the fibers on the wall of geometries with meshed cavities
+    cfun = kwargs.pop("cfun", None)
     if force_ldrb:
-        return generate_fibers_ldrb(mesh, **kwargs)
+        return generate_fibers_ldrb(mesh, cfun=cfun, **kwargs)
 
     # Map fiber_angle_endo and fiber_angle_epi to alpha_endo and alpha_epi
     if "fiber_angle_endo" in kwargs:
@@ -69,4 +99,4 @@ def generate_fibers(
                 f"Supported mesh types are: {supported_mesh_types!r}. "
                 "Lets try with LDRB algorithm to generate fibers.",
             )
-        return generate_fibers_ldrb(mesh, **kwargs)
+        return generate_fibers_ldrb(mesh, cfun=cfun, **kwargs)

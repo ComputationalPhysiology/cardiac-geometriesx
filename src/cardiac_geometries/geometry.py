@@ -368,7 +368,9 @@ class Geometry:
                 info["outdir"] = str(outdir)
             from .fibers import generate_fibers
 
-            f0, s0, n0 = generate_fibers(mesh=new_mesh, ffun=new_ffun, markers=self.markers, **info)
+            f0, s0, n0 = generate_fibers(
+                mesh=new_mesh, ffun=new_ffun, cfun=new_cfun, markers=self.markers, **info
+            )
         else:
             info = None
             # Interpolate fibers

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from mpi4py import MPI
 
+import dolfinx
 import numpy as np
 import pytest
 from click.testing import CliRunner
@@ -105,11 +106,22 @@ def test_script_no_fibers(script, tmp_path: Path):
     assert geo.mesh.geometry.dim == 3
 
 
+UKB_MARKERS = {
+    "biv": {"LV_ENDO", "RV_ENDO", "EPI", "MV", "AV", "TV", "PV", "Wall"},
+    "biv-closed": {"LV_ENDO", "RV_ENDO", "EPI", "MV", "AV", "TV", "PV"}
+    | {"MV_CAP", "AV_CAP", "TV_CAP", "PV_CAP", "Wall", "LV_CAVITY", "RV_CAVITY"},
+    "lv": {"LV_ENDO", "EPI", "RV_SEPTUM", "SEPTAL_BRIDGE", "MV", "AV", "Wall"},
+    "lv-closed": {"LV_ENDO", "EPI", "RV_SEPTUM", "SEPTAL_BRIDGE", "MV", "AV"}
+    | {"MV_CAP", "AV_CAP", "Wall", "LV_CAVITY"},
+}
+
+
+@pytest.mark.parametrize("geometry", ["biv", "biv-closed", "lv", "lv-closed"])
 @pytest.mark.parametrize("clipped", [True, False])
 @pytest.mark.parametrize("case", ["ED", "ES"])
 @pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
 @pytest.mark.skipif(MPI.COMM_WORLD.size > 1, reason="Pyvista operations is not parallelized yet")
-def test_ukb(tmp_path: Path, case: str, clipped: bool):
+def test_ukb(tmp_path: Path, case: str, clipped: bool, geometry: str):
     runner = CliRunner()
 
     comm = MPI.COMM_WORLD
@@ -123,10 +135,14 @@ def test_ukb(tmp_path: Path, case: str, clipped: bool):
         "10.0",
         "--char-length-min",
         "10.0",
+        "--geometry",
+        geometry,
     ]
     if clipped:
         if case == "ES":
             pytest.skip("Clipped case with default values are for ED")
+        if geometry != "biv":
+            pytest.skip("Clipping is only supported for the biv geometry")
         args.append("--clipped")
 
     res = runner.invoke(cli.ukb, args)
@@ -140,6 +156,75 @@ def test_ukb(tmp_path: Path, case: str, clipped: bool):
         assert (path / f"{case}.msh").exists()
     geo = Geometry.from_folder(comm=comm, folder=path)
     assert geo.mesh.geometry.dim == 3
+    if clipped:
+        assert set(geo.markers) == {"LV_ENDO", "RV_ENDO", "EPI", "BASE", "Wall"}
+    else:
+        assert set(geo.markers) == UKB_MARKERS[geometry]
+
+
+@pytest.mark.parametrize("geometry", ["biv-closed", "lv-closed"])
+@pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
+@pytest.mark.skipif(not HAS_LDRB, reason="ldrb package is not installed")
+def test_ukb_closed_fibers_only_in_wall(tmp_path: Path, geometry: str):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    args = [
+        path.as_posix(),
+        "--char-length-max",
+        "10.0",
+        "--char-length-min",
+        "10.0",
+        "--geometry",
+        geometry,
+        "--create-fibers",
+    ]
+    res = runner.invoke(cli.ukb, args)
+    assert res.exit_code == 0, res.output
+
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert geo.f0 is not None
+    assert geo.cfun is not None
+    V = geo.f0.function_space
+    bs = V.dofmap.bs
+    num_owned = V.dofmap.index_map.size_local
+
+    # Mark the dofs of the wall cells, also those owned by another process
+    wall = dolfinx.fem.Function(V)
+    wall_cells = geo.cfun.find(geo.markers["Wall"][0])
+    wall.x.array[V.dofmap.list[wall_cells] * bs] = 1.0
+    wall.x.scatter_reverse(dolfinx.la.InsertMode.add)
+    in_wall = wall.x.array[: num_owned * bs : bs] > 0
+
+    norms = np.linalg.norm(geo.f0.x.array[: num_owned * bs].reshape(-1, bs), axis=1)
+    assert np.allclose(norms[in_wall], 1.0)
+    assert np.allclose(norms[~in_wall], 0.0)
+    assert comm.allreduce(np.sum(~in_wall)) > 0
+
+
+def test_transform_markers_ukb():
+    from cardiac_geometries.mesh import transform_markers
+
+    biv = {"LV_ENDO": (1, 2), "RV_ENDO": (2, 2), "EPI": (3, 2)}
+    biv |= {"MV": (4, 2), "AV": (5, 2), "TV": (6, 2), "PV": (7, 2), "Wall": (8, 3)}
+    assert transform_markers(biv) == {"lv": [1], "rv": [2], "epi": [3], "base": [4, 5, 6, 7]}
+
+    clipped = {"LV_ENDO": (1, 2), "RV_ENDO": (2, 2), "EPI": (3, 2), "BASE": (4, 2)}
+    assert transform_markers(clipped) == {"lv": [1], "rv": [2], "epi": [3], "base": [4]}
+
+    lv = {"LV_ENDO": (1, 2), "EPI": (2, 2), "RV_SEPTUM": (3, 2), "SEPTAL_BRIDGE": (4, 2)}
+    lv |= {"MV": (5, 2), "AV": (6, 2), "MV_CAP": (7, 2), "AV_CAP": (8, 2), "Wall": (9, 3)}
+    assert transform_markers(lv) == {"lv": [1], "epi": [2, 3], "base": [5, 6]}
+
+
+@pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
+def test_ukb_clipped_requires_biv(tmp_path: Path):
+    from cardiac_geometries import mesh
+
+    with pytest.raises(ValueError, match="only supported for the 'biv' geometry"):
+        mesh.ukb(tmp_path, geometry="lv", clipped=True)
 
 
 def test_lv_aha(tmp_path: Path):
