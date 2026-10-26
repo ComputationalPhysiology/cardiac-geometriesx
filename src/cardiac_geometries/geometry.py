@@ -318,6 +318,8 @@ class Geometry:
         ffun = self.ffun
 
         for _ in range(n):
+            # Newer versions of dolfinx require the edges to be created before refining
+            mesh.topology.create_entities(1)
             new_mesh, parent_cell, parent_facet = dolfinx.mesh.refine(
                 mesh,
                 partitioner=None,
