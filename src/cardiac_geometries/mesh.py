@@ -92,6 +92,34 @@ def transform_markers(
         return {k: [v[0]] for k, v in markers.items()}
 
 
+def doste_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
+    """Markers for the method of Doste et al. (`ldrb.dolfinx_doste`) from the
+    markers of the UKB geometries (ukb-atlas >= 2.0), which need the valves."""
+    missing = {"LV_ENDO", "EPI", "MV", "AV"} - set(markers)
+    if missing:
+        raise ValueError(
+            f"The method of Doste et al. needs the markers {sorted(missing)}, which are only "
+            "in the UKB geometries with outflow tracts (not clipped)"
+        )
+    epi = [markers["EPI"][0]]
+    if "RV_SEPTUM" in markers:
+        # The LV-only geometries are closed on the RV side by the RV septum
+        epi.append(markers["RV_SEPTUM"][0])
+    transformed = {
+        "lv": [markers["LV_ENDO"][0]],
+        "epi": epi,
+        "mv": [markers["MV"][0]],
+        "av": [markers["AV"][0]],
+    }
+    if "RV_ENDO" in markers:
+        transformed |= {
+            "rv": [markers["RV_ENDO"][0]],
+            "tv": [markers["TV"][0]],
+            "pv": [markers["PV"][0]],
+        }
+    return transformed
+
+
 def ukb(
     outdir: str | Path,
     mode: int = -1,
@@ -109,6 +137,7 @@ def ukb(
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     geometry: str = "biv",
+    fiber_method: str | None = None,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -153,6 +182,13 @@ def ukb(
         The closed geometries also mesh the cavities, which are marked as
         "LV_CAVITY" and "RV_CAVITY" in the cell tags, while the myocardium is
         marked as "Wall". Fibers are only created in the wall. By default "biv".
+    fiber_method : str | None, optional
+        Rule-based method for the fibers: "doste" for the method of Doste et al.
+        (2019), which handles the outflow tracts, or "ldrb" for the method of
+        Bayer et al. (2012). With "doste", `fiber_angle_endo` and
+        `fiber_angle_epi` are the angles in the LV, while the RV and outflow
+        tracts get the angles from the paper. By default "doste", or "ldrb" for
+        clipped meshes, which have no outflow tracts.
 
     Returns
     -------
@@ -164,6 +200,12 @@ def ukb(
         raise ValueError(f"Unknown geometry {geometry!r}, expected one of {UKB_GEOMETRIES}")
     if clipped and geometry != "biv":
         raise ValueError("Clipping is only supported for the 'biv' geometry")
+    if fiber_method is None:
+        fiber_method = "ldrb" if clipped else "doste"
+    if fiber_method not in ("ldrb", "doste"):
+        raise ValueError(f"Unknown fiber method {fiber_method!r}, expected 'ldrb' or 'doste'")
+    if clipped and fiber_method == "doste":
+        raise ValueError("The 'doste' fiber method needs the outflow tracts, use 'ldrb'")
 
     try:
         import ukb.cli
@@ -227,6 +269,7 @@ def ukb(
         "cardiac_geometry_version": __version__,
         "mesh_type": "ukb",
         "geometry": geometry,
+        "fiber_method": fiber_method,
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,
@@ -242,17 +285,18 @@ def ukb(
     if create_fibers:
         from .fibers import ldrb_fibers
 
+        angles = {"alpha_endo_lv": fiber_angle_endo, "alpha_epi_lv": fiber_angle_epi}
+        if fiber_method == "ldrb":
+            angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
         system, microstructure = ldrb_fibers(
             mesh=gmsh_geometry.mesh,
             ffun=gmsh_geometry.ffun,
             cfun=gmsh_geometry.cfun,
             markers=gmsh_geometry.markers,
             clipped=clipped,
-            alpha_endo_lv=fiber_angle_endo,
-            alpha_epi_lv=fiber_angle_epi,
-            beta_endo_lv=0,
-            beta_epi_lv=0,
+            fiber_method=fiber_method,
             fiber_space=fiber_space,
+            **angles,
         )
 
         fibers = microstructure._asdict()

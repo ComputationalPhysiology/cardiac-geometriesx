@@ -227,6 +227,71 @@ def test_ukb_clipped_requires_biv(tmp_path: Path):
         mesh.ukb(tmp_path, geometry="lv", clipped=True)
 
 
+@pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
+def test_ukb_clipped_does_not_support_doste(tmp_path: Path):
+    from cardiac_geometries import mesh
+
+    with pytest.raises(ValueError, match="needs the outflow tracts"):
+        mesh.ukb(tmp_path, clipped=True, fiber_method="doste")
+
+
+@pytest.mark.parametrize("fiber_method", ["doste", "ldrb"])
+@pytest.mark.parametrize("geometry", ["biv", "lv"])
+@pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
+@pytest.mark.skipif(not HAS_LDRB, reason="ldrb package is not installed")
+def test_ukb_fiber_method(tmp_path: Path, geometry: str, fiber_method: str):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    args = [
+        path.as_posix(),
+        "--char-length-max",
+        "10.0",
+        "--char-length-min",
+        "10.0",
+        "--geometry",
+        geometry,
+        "--create-fibers",
+        "--fiber-method",
+        fiber_method,
+    ]
+    res = runner.invoke(cli.ukb, args)
+    assert res.exit_code == 0, res.output
+
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert geo.info["fiber_method"] == fiber_method
+    assert geo.f0 is not None
+    num_owned = geo.f0.function_space.dofmap.index_map.size_local
+    f0 = geo.f0.x.array[: 3 * num_owned].reshape(-1, 3)
+    assert np.allclose(np.linalg.norm(f0, axis=1), 1.0)
+
+
+def test_doste_markers():
+    from cardiac_geometries.mesh import doste_markers
+
+    biv = {"LV_ENDO": (1, 2), "RV_ENDO": (2, 2), "EPI": (3, 2)}
+    biv |= {"MV": (4, 2), "AV": (5, 2), "TV": (6, 2), "PV": (7, 2), "Wall": (8, 3)}
+    assert doste_markers(biv) == {
+        "lv": [1],
+        "epi": [3],
+        "mv": [4],
+        "av": [5],
+        "rv": [2],
+        "tv": [6],
+        "pv": [7],
+    }
+
+    lv = {"LV_ENDO": (1, 2), "EPI": (2, 2), "RV_SEPTUM": (3, 2), "SEPTAL_BRIDGE": (4, 2)}
+    lv |= {"MV": (5, 2), "AV": (6, 2), "Wall": (7, 3)}
+    assert doste_markers(lv) == {"lv": [1], "epi": [2, 3], "mv": [5], "av": [6]}
+
+    clipped = {"LV_ENDO": (1, 2), "RV_ENDO": (2, 2), "EPI": (3, 2), "BASE": (4, 2)}
+    with pytest.raises(ValueError, match="not clipped"):
+        doste_markers(clipped)
+
+
 def test_lv_aha(tmp_path: Path):
     runner = CliRunner()
 

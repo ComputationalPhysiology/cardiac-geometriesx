@@ -1,3 +1,4 @@
+import inspect
 import logging
 
 import dolfinx
@@ -14,15 +15,31 @@ logger = logging.getLogger(__name__)
 supported_mesh_types = ("slab", "cylinder", "lv_ellipsoid", "biv_ellipsoid", "ukb", "lv", "biv")
 
 
+# Arguments to `ldrb.dolfinx_doste` with other names in `Geometry.info` or `generate_fibers`
+_DOSTE_ARGUMENTS = {
+    "fiber_angle_endo": "alpha_endo_lv",
+    "fiber_angle_epi": "alpha_epi_lv",
+    "alpha_endo": "alpha_endo_lv",
+    "alpha_epi": "alpha_epi_lv",
+    "function_space": "fiber_space",
+}
+
+
 def ldrb_fibers(
     mesh: dolfinx.mesh.Mesh,
     ffun: dolfinx.mesh.MeshTags | None,
     markers: dict[str, tuple[int, int]],
     cfun: dolfinx.mesh.MeshTags | None = None,
     clipped: bool = False,
+    fiber_method: str = "ldrb",
     **kwargs,
 ):
-    """Create fibers with the LDRB algorithm.
+    """Create fibers with a Laplace-Dirichlet rule-based method from fenicsx-ldrb.
+
+    With `fiber_method` "ldrb" the method of Bayer et al. (`ldrb.dolfinx_ldrb`)
+    is used, and with "doste" the method of Doste et al. for geometries with
+    outflow tracts (`ldrb.dolfinx_doste`), which needs the valves of the UKB
+    geometries to be marked separately.
 
     For geometries where the cavities are meshed as well (marked with
     ``*_CAVITY``, e.g. the closed UKB geometries), the fibers are computed on
@@ -30,9 +47,9 @@ def ldrb_fibers(
 
     Returns
     -------
-    tuple[ldrb.io.LDRBOutput, Microstructure]
-        The output from LDRB, on the mesh it was computed on (the wall for
-        geometries with cavities), and the fibers on `mesh`.
+    tuple[ldrb.io.LDRBOutput | ldrb.io.DosteOutput, Microstructure]
+        The output from fenicsx-ldrb, on the mesh it was computed on (the wall
+        for geometries with cavities), and the fibers on `mesh`.
     """
     try:
         import ldrb
@@ -43,17 +60,37 @@ def ldrb_fibers(
         )
         raise ImportError(msg) from ex
 
-    from ..mesh import transform_markers
+    from ..mesh import doste_markers, transform_markers
 
-    ldrb_markers = transform_markers(markers, clipped=clipped)
+    if fiber_method == "ldrb":
+        method_markers = transform_markers(markers, clipped=clipped)
+
+        def compute(mesh, ffun):
+            return ldrb.dolfinx_ldrb(mesh=mesh, ffun=ffun, markers=method_markers, **kwargs)
+
+    elif fiber_method == "doste":
+        method_markers = doste_markers(markers)
+        # Skip arguments that only the method of Bayer et al. or other mesh types take
+        parameters = inspect.signature(ldrb.dolfinx_doste).parameters
+        doste_kwargs = {}
+        for name, value in kwargs.items():
+            name = _DOSTE_ARGUMENTS.get(name, name)
+            if name in parameters:
+                doste_kwargs[name] = value
+
+        def compute(mesh, ffun):
+            return ldrb.dolfinx_doste(mesh=mesh, ffun=ffun, markers=method_markers, **doste_kwargs)
+
+    else:
+        raise ValueError(f"Unknown fiber method {fiber_method!r}, expected 'ldrb' or 'doste'")
 
     has_cavities = any(name.endswith("_CAVITY") for name in markers)
     if not has_cavities or cfun is None or ffun is None:
-        system = ldrb.dolfinx_ldrb(mesh=mesh, ffun=ffun, markers=ldrb_markers, **kwargs)
+        system = compute(mesh, ffun)
         return system, Microstructure(f0=system.f0, s0=system.s0, n0=system.n0)
 
     wall, wall_ffun, parent_cells = extract_submesh(mesh, cfun, ffun, [markers["Wall"][0]])
-    system = ldrb.dolfinx_ldrb(mesh=wall, ffun=wall_ffun, markers=ldrb_markers, **kwargs)
+    system = compute(wall, wall_ffun)
     V = dolfinx.fem.functionspace(mesh, system.f0.function_space.ufl_element())
     return system, Microstructure(
         f0=transfer_to_parent(system.f0, V, parent_cells),
