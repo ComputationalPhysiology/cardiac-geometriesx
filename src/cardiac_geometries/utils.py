@@ -243,14 +243,6 @@ def gmsh2dolfin(
     return GMshGeometry(mesh, ct, ft, et, vt, markers)
 
 
-def _sub_to_parent(entity_map, entities: npt.NDArray[np.int32]) -> npt.NDArray[np.int32]:
-    """Map submesh entities to the parent mesh, across the `create_submesh` return type
-    change (an array in dolfinx 0.10, an `EntityMap` from 0.11)."""
-    if isinstance(entity_map, np.ndarray):
-        return entity_map[entities]
-    return np.asarray(entity_map.sub_topology_to_topology(entities, inverse=False), dtype=np.int32)
-
-
 def extract_submesh(
     mesh: dolfinx.mesh.Mesh,
     cfun: dolfinx.mesh.MeshTags,
@@ -267,12 +259,8 @@ def extract_submesh(
     cells = np.unique(np.hstack([cfun.find(m) for m in cell_markers])).astype(np.int32)
     submesh, cell_map, vertex_map, _ = dolfinx.mesh.create_submesh(mesh, tdim, cells)
 
-    cell_imap = submesh.topology.index_map(tdim)
-    num_cells = cell_imap.size_local + cell_imap.num_ghosts
-    parent_cells = _sub_to_parent(cell_map, np.arange(num_cells, dtype=np.int32))
-    vertex_imap = submesh.topology.index_map(0)
-    num_vertices = vertex_imap.size_local + vertex_imap.num_ghosts
-    parent_vertices = _sub_to_parent(vertex_map, np.arange(num_vertices, dtype=np.int32))
+    parent_cells = fenicsx_compat.submesh_to_parent(cell_map)
+    parent_vertices = fenicsx_compat.submesh_to_parent(vertex_map)
 
     # Match the facets of the submesh to the tagged facets of the parent by their vertices
     facet_type = dolfinx.cpp.mesh.cell_entity_type(mesh.topology.cell_type, fdim, 0)
