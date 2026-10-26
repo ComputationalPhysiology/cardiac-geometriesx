@@ -172,7 +172,9 @@ def read_mesh(
             mesh.topology.create_connectivity(dim, mesh.topology.dim)
             try:
                 tags[var] = xdmf.read_meshtags(mesh, name=name)
-            except RuntimeError:
+            except (RuntimeError, IndexError):
+                # A missing grid raises RuntimeError in older versions of dolfinx
+                # and IndexError in newer ones
                 continue
 
     return mesh, tags
