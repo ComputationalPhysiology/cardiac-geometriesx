@@ -67,7 +67,9 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = plotter.screenshot("ukb_mesh.png")
 
-# We also print the markers
+# We also print the markers. The surfaces are the endocardium of each ventricle (`LV_ENDO` and
+# `RV_ENDO`), the epicardium (`EPI`) and the rims of the four valves (`MV`, `AV`, `TV` and `PV`),
+# and the volume is the myocardium (`Wall`)
 
 print(geometry.markers)
 
@@ -88,20 +90,14 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = p.screenshot("facet_tags_ukb.png")
 
-# We could also combine all the outflow tracts into one entity, i.e the `BASE`
+# We could also combine all the valves into one entity, i.e the `BASE`
 
+m = {name: value[0] for name, value in geometry.markers.items()}
 entities = [
-    geometry.ffun.find(1),  # LV
-    geometry.ffun.find(2),  # RV
-    geometry.ffun.find(7),  # EPI
-    np.hstack(
-        [
-            geometry.ffun.find(3),
-            geometry.ffun.find(4),
-            geometry.ffun.find(5),
-            geometry.ffun.find(6),
-        ]
-    ),  # BASE
+    geometry.ffun.find(m["LV_ENDO"]),
+    geometry.ffun.find(m["RV_ENDO"]),
+    geometry.ffun.find(m["EPI"]),
+    np.hstack([geometry.ffun.find(m[valve]) for valve in ["MV", "AV", "TV", "PV"]]),  # BASE
 ]
 entity_values = [
     np.full(e.shape, i + 1, dtype=np.int32) for i, e in enumerate(entities)
@@ -135,13 +131,15 @@ cg.geometry.save_geometry(
     ffun=ffun,
 )
 
-# Now let ut combine the markers as well so that they align with the markers needed in fenicsx-ldrb
+# Now let us combine the markers as well so that they align with the markers needed in
+# fenicsx-ldrb, where the valves together make up the base
 
-markers = {}
-keymap = {"LV": "lv", "RV": "rv", "EPI": "epi"}
-for k, v in geometry.markers.items():
-    markers[keymap.get(k, k)] = [v[0]]
-markers["base"] = [geometry.markers[m][0] for m in ["MV", "PV", "TV", "AV"]]
+markers = {
+    "lv": [m["LV_ENDO"]],
+    "rv": [m["RV_ENDO"]],
+    "epi": [m["EPI"]],
+    "base": [m[valve] for valve in ["MV", "AV", "TV", "PV"]],
+}
 
 # And finally generate the fibers
 
@@ -191,8 +189,8 @@ else:
 geo = cg.geometry.Geometry.from_folder(comm=comm, folder=outdir)
 
 
-# We have also implemented a wrapper around the `ukb-atlas` package that allows you to generate the fibers directly. In this case you can simply de
-
+# We have also implemented a wrapper around the `ukb-atlas` package that allows you to generate the
+# mesh and the fibers directly
 
 outdir = Path("ukb_mesh2")
 geo = cg.mesh.ukb(
@@ -203,3 +201,27 @@ geo = cg.mesh.ukb(
     fiber_angle_endo=60,
     fiber_angle_epi=-60,
 )
+
+# Since the UKB geometries include the outflow tracts, the fibers are by default generated with the
+# rule-based method of [Doste et al. (2019)](https://doi.org/10.1002/cnm.3185) (see
+# `ldrb.dolfinx_doste`), which defines the longitudinal direction in each ventricle from the apex
+# to both the inflow and the outflow valve, and uses separate fiber angles in the RV and the
+# outflow tracts. Here `fiber_angle_endo` and `fiber_angle_epi` are the angles in the LV. To use
+# the method above instead, pass `fiber_method="ldrb"`, which is also the default for clipped
+# meshes (`clipped=True`), as these have no outflow tracts
+
+print(geo.info["fiber_method"])
+
+# The wrapper can also create an LV-only geometry (`geometry="lv"`), and geometries where the
+# valves are closed by caps (`geometry="biv-closed"` and `geometry="lv-closed"`). In the closed
+# geometries the cavities are meshed as well, and are marked as `LV_CAVITY` and `RV_CAVITY` in the
+# cell tags, while the fibers are only created in the wall (`Wall`)
+
+geo_closed = cg.mesh.ukb(
+    outdir=Path("ukb_mesh_lv_closed"),
+    comm=comm,
+    geometry="lv-closed",
+    char_length_max=5.0,
+    char_length_min=5.0,
+)
+print(geo_closed.markers)

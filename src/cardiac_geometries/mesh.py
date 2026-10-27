@@ -21,11 +21,27 @@ __version__ = meta["Version"]
 
 logger = get_logger()
 
+UKB_GEOMETRIES = ("biv", "biv-closed", "lv", "lv-closed")
+
 
 def transform_markers(
     markers: dict[str, tuple[int, int]], clipped: bool = False
 ) -> dict[str, list[int]]:
-    if "ENDO_RV" in markers:
+    if "LV_ENDO" in markers:
+        # UKB geometries from ukb-atlas >= 2.0
+        epi = [markers["EPI"][0]]
+        if "RV_SEPTUM" in markers:
+            # The LV-only geometries are closed on the RV side by the RV septum
+            epi.append(markers["RV_SEPTUM"][0])
+        if "BASE" in markers:
+            base = [markers["BASE"][0]]
+        else:
+            base = [markers[valve][0] for valve in ("MV", "AV", "TV", "PV") if valve in markers]
+        transformed = {"lv": [markers["LV_ENDO"][0]], "epi": epi, "base": base}
+        if "RV_ENDO" in markers:
+            transformed["rv"] = [markers["RV_ENDO"][0]]
+        return transformed
+    elif "ENDO_RV" in markers:
         return {
             "lv": [markers["ENDO_LV"][0]],
             "rv": [markers["ENDO_RV"][0]],
@@ -76,6 +92,34 @@ def transform_markers(
         return {k: [v[0]] for k, v in markers.items()}
 
 
+def doste_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
+    """Markers for the method of Doste et al. (`ldrb.dolfinx_doste`) from the
+    markers of the UKB geometries (ukb-atlas >= 2.0), which need the valves."""
+    missing = {"LV_ENDO", "EPI", "MV", "AV"} - set(markers)
+    if missing:
+        raise ValueError(
+            f"The method of Doste et al. needs the markers {sorted(missing)}, which are only "
+            "in the UKB geometries with outflow tracts (not clipped)"
+        )
+    epi = [markers["EPI"][0]]
+    if "RV_SEPTUM" in markers:
+        # The LV-only geometries are closed on the RV side by the RV septum
+        epi.append(markers["RV_SEPTUM"][0])
+    transformed = {
+        "lv": [markers["LV_ENDO"][0]],
+        "epi": epi,
+        "mv": [markers["MV"][0]],
+        "av": [markers["AV"][0]],
+    }
+    if "RV_ENDO" in markers:
+        transformed |= {
+            "rv": [markers["RV_ENDO"][0]],
+            "tv": [markers["TV"][0]],
+            "pv": [markers["PV"][0]],
+        }
+    return transformed
+
+
 def ukb(
     outdir: str | Path,
     mode: int = -1,
@@ -92,6 +136,8 @@ def ukb(
     burns_path: Path | None = None,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    geometry: str = "biv",
+    fiber_method: str | None = None,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -130,6 +176,19 @@ def ukb(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    geometry : str, optional
+        Which geometry to create: biventricular ("biv") or LV only ("lv"), with
+        open valves, or with the valves closed by caps ("biv-closed", "lv-closed").
+        The closed geometries also mesh the cavities, which are marked as
+        "LV_CAVITY" and "RV_CAVITY" in the cell tags, while the myocardium is
+        marked as "Wall". Fibers are only created in the wall. By default "biv".
+    fiber_method : str | None, optional
+        Rule-based method for the fibers: "doste" for the method of Doste et al.
+        (2019), which handles the outflow tracts, or "ldrb" for the method of
+        Bayer et al. (2012). With "doste", `fiber_angle_endo` and
+        `fiber_angle_epi` are the angles in the LV, while the RV and outflow
+        tracts get the angles from the paper. By default "doste", or "ldrb" for
+        clipped meshes, which have no outflow tracts.
 
     Returns
     -------
@@ -137,6 +196,17 @@ def ukb(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
+    if geometry not in UKB_GEOMETRIES:
+        raise ValueError(f"Unknown geometry {geometry!r}, expected one of {UKB_GEOMETRIES}")
+    if clipped and geometry != "biv":
+        raise ValueError("Clipping is only supported for the 'biv' geometry")
+    if fiber_method is None:
+        fiber_method = "ldrb" if clipped else "doste"
+    if fiber_method not in ("ldrb", "doste"):
+        raise ValueError(f"Unknown fiber method {fiber_method!r}, expected 'ldrb' or 'doste'")
+    if clipped and fiber_method == "doste":
+        raise ValueError("The 'doste' fiber method needs the outflow tracts, use 'ldrb'")
+
     try:
         import ukb.cli
     except ImportError as e:
@@ -147,7 +217,18 @@ def ukb(
         raise ImportError(msg) from e
 
     if comm.rank == 0:
-        surf_args = ["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case]
+        surf_args = [
+            "surf",
+            str(outdir),
+            "--mode",
+            str(mode),
+            "--std",
+            str(std),
+            "--case",
+            case,
+            "--geometry",
+            geometry,
+        ]
         if use_burns:
             surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
 
@@ -175,7 +256,7 @@ def ukb(
     else:
         mesh_name = outdir / f"{case}.msh"
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
+    gmsh_geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
     info = {
         "mode": mode,
         "std": std,
@@ -187,6 +268,8 @@ def ukb(
         "fiber_space": fiber_space,
         "cardiac_geometry_version": __version__,
         "mesh_type": "ukb",
+        "geometry": geometry,
+        "fiber_method": fiber_method,
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,
@@ -194,34 +277,29 @@ def ukb(
     }
     if comm.rank == 0:
         (outdir / "markers.json").write_text(
-            json.dumps(geometry.markers, default=utils.json_serial)
+            json.dumps(gmsh_geometry.markers, default=utils.json_serial)
         )
         (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
 
     fibers = {}
     if create_fibers:
-        try:
-            import ldrb
-        except ImportError as ex:
-            msg = (
-                "To create fibers you need to install the ldrb package "
-                "which you can install with pip install fenicsx-ldrb"
-            )
-            raise ImportError(msg) from ex
+        from .fibers import ldrb_fibers
 
-        markers = transform_markers(geometry.markers, clipped=clipped)
-        system = ldrb.dolfinx_ldrb(
-            mesh=geometry.mesh,
-            ffun=geometry.ffun,
-            markers=markers,
-            alpha_endo_lv=fiber_angle_endo,
-            alpha_epi_lv=fiber_angle_epi,
-            beta_endo_lv=0,
-            beta_epi_lv=0,
+        angles = {"alpha_endo_lv": fiber_angle_endo, "alpha_epi_lv": fiber_angle_epi}
+        if fiber_method == "ldrb":
+            angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
+        system, microstructure = ldrb_fibers(
+            mesh=gmsh_geometry.mesh,
+            ffun=gmsh_geometry.ffun,
+            cfun=gmsh_geometry.cfun,
+            markers=gmsh_geometry.markers,
+            clipped=clipped,
+            fiber_method=fiber_method,
             fiber_space=fiber_space,
+            **angles,
         )
 
-        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
+        fibers = microstructure._asdict()
 
         for k, v in system._asdict().items():
             if v is None:
@@ -236,13 +314,13 @@ def ukb(
 
     save_geometry(
         path=outdir / "geometry.bp",
-        mesh=geometry.mesh,
-        markers=geometry.markers,
+        mesh=gmsh_geometry.mesh,
+        markers=gmsh_geometry.markers,
         info=info,
-        cfun=geometry.cfun,
-        ffun=geometry.ffun,
-        efun=geometry.efun,
-        vfun=geometry.vfun,
+        cfun=gmsh_geometry.cfun,
+        ffun=gmsh_geometry.ffun,
+        efun=gmsh_geometry.efun,
+        vfun=gmsh_geometry.vfun,
         f0=fibers.get("f0", None),
         s0=fibers.get("s0", None),
         n0=fibers.get("n0", None),
@@ -250,12 +328,12 @@ def ukb(
     # geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     # return geo
     return Geometry(
-        mesh=geometry.mesh,
-        markers=geometry.markers,
-        cfun=geometry.cfun,
-        ffun=geometry.ffun,
-        efun=geometry.efun,
-        vfun=geometry.vfun,
+        mesh=gmsh_geometry.mesh,
+        markers=gmsh_geometry.markers,
+        cfun=gmsh_geometry.cfun,
+        ffun=gmsh_geometry.ffun,
+        efun=gmsh_geometry.efun,
+        vfun=gmsh_geometry.vfun,
         f0=fibers.get("f0", None),
         s0=fibers.get("s0", None),
         n0=fibers.get("n0", None),
