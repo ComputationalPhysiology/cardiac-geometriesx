@@ -26,7 +26,7 @@ dependencies = [
     "fenics-dolfinx>=0.10.0",
     "fenicsx-compat>=0.4.0",
     "structlog",
-    "cardiac-geometries-core>=0.4",
+    "cardiac-geometries-core>=1.6.0",
     "rich-click",
     "io4dolfinx",
     "scifem",
@@ -55,7 +55,7 @@ docs = [
     "trame-vuetify",
     "ipywidgets",
     "fenicsx-ldrb>=0.2.0",
-    "ukb-atlas>=2.0",
+    "ukb-atlas>=2.1.0",
     "sphinx-codeautolink",
     "sphinx-copybutton",
 ]
@@ -63,7 +63,7 @@ test = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ukb-atlas[pyvista]>=2.0",
+    "ukb-atlas[pyvista]>=2.1.0",
     "fenicsx-ldrb>=0.2.0",
 ]
 gui = [
