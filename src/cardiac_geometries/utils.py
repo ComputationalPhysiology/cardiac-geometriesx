@@ -172,7 +172,9 @@ def read_mesh(
             mesh.topology.create_connectivity(dim, mesh.topology.dim)
             try:
                 tags[var] = xdmf.read_meshtags(mesh, name=name)
-            except RuntimeError:
+            except (RuntimeError, IndexError):
+                # A missing grid raises RuntimeError in older versions of dolfinx
+                # and IndexError in newer ones
                 continue
 
     return mesh, tags
@@ -241,6 +243,81 @@ def gmsh2dolfin(
     save_mesh_to_xdmf(comm, outdir / "mesh.xdmf", mesh, ct, ft, et, vt)
 
     return GMshGeometry(mesh, ct, ft, et, vt, markers)
+
+
+def extract_submesh(
+    mesh: dolfinx.mesh.Mesh,
+    cfun: dolfinx.mesh.MeshTags,
+    ffun: dolfinx.mesh.MeshTags,
+    cell_markers: Iterable[int],
+) -> tuple[dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, npt.NDArray[np.int32]]:
+    """Create a submesh of the cells tagged with any of `cell_markers`.
+
+    Returns the submesh, the facet tags of `ffun` on the submesh, and the
+    parent cell of each (owned and ghost) cell of the submesh.
+    """
+    tdim = mesh.topology.dim
+    fdim = tdim - 1
+    cells = np.unique(np.hstack([cfun.find(m) for m in cell_markers])).astype(np.int32)
+    submesh, cell_map, vertex_map, _ = dolfinx.mesh.create_submesh(mesh, tdim, cells)
+
+    parent_cells = fenicsx_compat.submesh_to_parent(cell_map)
+    parent_vertices = fenicsx_compat.submesh_to_parent(vertex_map)
+
+    # Match the facets of the submesh to the tagged facets of the parent by their vertices
+    facet_type = dolfinx.cpp.mesh.cell_entity_type(mesh.topology.cell_type, fdim, 0)
+    num_facet_vertices = dolfinx.cpp.mesh.cell_num_vertices(facet_type)
+    mesh.topology.create_connectivity(fdim, 0)
+    parent_f2v = mesh.topology.connectivity(fdim, 0).array.reshape(-1, num_facet_vertices)
+    tagged = np.sort(parent_f2v[ffun.indices], axis=1)
+    tag_of = dict(zip(map(tuple, tagged), ffun.values))
+
+    submesh.topology.create_entities(fdim)
+    submesh.topology.create_connectivity(fdim, tdim)
+    facet_imap = submesh.topology.index_map(fdim)
+    num_facets = facet_imap.size_local + facet_imap.num_ghosts
+    sub_f2v = submesh.topology.connectivity(fdim, 0).array.reshape(-1, num_facet_vertices)
+    sub_facets = np.sort(parent_vertices[sub_f2v[:num_facets]], axis=1)
+    values = np.array([tag_of.get(tuple(f), -1) for f in sub_facets], dtype=np.int32)
+    indices = np.flatnonzero(values >= 0).astype(np.int32)
+    sub_ffun = dolfinx.mesh.meshtags(submesh, fdim, indices, values[indices])
+    sub_ffun.name = ffun.name
+
+    return submesh, sub_ffun, parent_cells
+
+
+def transfer_to_parent(
+    u_sub: dolfinx.fem.Function,
+    V: dolfinx.fem.FunctionSpace,
+    parent_cells: npt.NDArray[np.int32],
+) -> dolfinx.fem.Function:
+    """Copy a function on a submesh into `V` on the parent mesh, cell by cell.
+
+    `V` must use the same element as the space of `u_sub`, and `parent_cells` is
+    the parent cell of each cell of the submesh (see `extract_submesh`). The
+    degrees of freedom of the parent outside the submesh are zero. The local
+    dofs are copied as is, which is exact for elements whose dofs do not need
+    permuting between the meshes, such as Lagrange of degree at most 2 and
+    quadrature elements.
+    """
+    u_sub.x.scatter_forward()
+    u = dolfinx.fem.Function(V, name=u_sub.name)
+    # Count the number of writes to each dof, as a dof shared between processes
+    # may only be written to on some of them
+    count = dolfinx.fem.Function(V)
+    bs = V.dofmap.bs
+    sub_dofs = u_sub.function_space.dofmap.list[: len(parent_cells)]
+    parent_dofs = V.dofmap.list[parent_cells]
+    for b in range(bs):
+        u.x.array[parent_dofs * bs + b] = u_sub.x.array[sub_dofs * bs + b]
+        count.x.array[parent_dofs * bs + b] = 1.0
+    u.x.scatter_reverse(dolfinx.la.InsertMode.add)
+    count.x.scatter_reverse(dolfinx.la.InsertMode.add)
+    num_owned = V.dofmap.index_map.size_local * bs
+    written = count.x.array[:num_owned] > 0
+    u.x.array[:num_owned][written] /= count.x.array[:num_owned][written]
+    u.x.scatter_forward()
+    return u
 
 
 def save_mesh_to_xdmf(

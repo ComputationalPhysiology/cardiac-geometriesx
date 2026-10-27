@@ -130,6 +130,25 @@ def app():
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--geometry",
+    default="biv",
+    type=click.Choice(mesh.UKB_GEOMETRIES),
+    help=(
+        "Biventricular (biv) or LV only (lv) geometry, with open valves or with the "
+        "valves closed by caps and the cavities meshed (biv-closed, lv-closed)"
+    ),
+    show_default=True,
+)
+@click.option(
+    "--fiber-method",
+    default=None,
+    type=click.Choice(["doste", "ldrb"]),
+    help=(
+        "Rule-based method for the fibers: Doste et al. (2019), which handles the outflow "
+        "tracts, or Bayer et al. (2012). By default doste, or ldrb with --clipped"
+    ),
+)
 def ukb(
     outdir: Path | str,
     mode: int = -1,
@@ -143,6 +162,8 @@ def ukb(
     clipped: bool = False,
     create_fibers: bool = True,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    geometry: str = "biv",
+    fiber_method: str | None = None,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -160,6 +181,8 @@ def ukb(
         clipped=clipped,
         create_fibers=create_fibers,
         ghost_mode=ghost_mode,
+        geometry=geometry,
+        fiber_method=fiber_method,
     )
 
 
