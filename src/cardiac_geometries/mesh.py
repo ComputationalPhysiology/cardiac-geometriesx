@@ -134,6 +134,7 @@ def ukb(
     clipped: bool = False,
     use_burns: bool = False,
     burns_path: Path | None = None,
+    refine: int = 0,
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
@@ -173,6 +174,10 @@ def ukb(
     burns_path : Path | None
         Path to the burns atlas file. This will be a .mat file which will be loaded
         using scipy.io.loadmat. This needs to be specified if `use_burns`.
+    refine : int, optional
+        Number of times to refine the surfaces of the atlas before meshing,
+        placing the new nodes on smooth surfaces through the nodes of the atlas.
+        This makes meshes of higher order more accurate, by default 0
     order : int, optional
         Order of the mesh elements. With order higher than one the elements
         are curved to follow the boundaries, by default 1
@@ -232,6 +237,8 @@ def ukb(
             case,
             "--geometry",
             geometry,
+            "--refine",
+            str(refine),
         ]
         if use_burns:
             surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
@@ -277,6 +284,7 @@ def ukb(
         "order": order,
         "geometry": geometry,
         "fiber_method": fiber_method,
+        "refine": refine,
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,

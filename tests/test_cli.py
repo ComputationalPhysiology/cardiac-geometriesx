@@ -448,6 +448,8 @@ def test_ukb_higher_order(tmp_path: Path, clipped: bool):
         "--create-fibers",
         "--order",
         "2",
+        "--refine",
+        "1",
     ]
     if clipped:
         args.append("--clipped")

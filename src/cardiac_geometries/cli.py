@@ -150,6 +150,16 @@ def app():
     ),
 )
 @click.option(
+    "--refine",
+    default=0,
+    type=int,
+    help=(
+        "Number of times to refine the surfaces of the atlas, placing the new nodes on "
+        "smooth surfaces through the nodes of the atlas"
+    ),
+    show_default=True,
+)
+@click.option(
     "--order",
     default=1,
     type=int,
@@ -172,6 +182,7 @@ def ukb(
     geometry: str = "biv",
     fiber_method: str | None = None,
     order: int = 1,
+    refine: int = 0,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -192,6 +203,7 @@ def ukb(
         geometry=geometry,
         fiber_method=fiber_method,
         order=order,
+        refine=refine,
     )
 
 
