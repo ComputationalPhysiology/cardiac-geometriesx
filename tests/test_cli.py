@@ -368,3 +368,99 @@ def test_rotate(script, fiber_space, tmp_path: Path):
     assert geo_rotated.mesh.geometry.dim == 3
     if fiber_space is not None:
         assert geo_rotated.f0 is not None
+
+
+def mesh_order(mesh: dolfinx.mesh.Mesh) -> int:
+    domain = mesh.ufl_domain()
+    assert domain is not None
+    return domain.ufl_coordinate_element().degree
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        cli.slab,
+        cli.lv_ellipsoid,
+        cli.cylinder,
+        cli.cylinder_elliptical,
+        cli.cylinder_D_shaped,
+        cli.cylinder_racetrack,
+    ],
+    ids=[
+        "slab",
+        "lv_ellipsoid",
+        "cylinder",
+        "cylinder_elliptical",
+        "cylinder_D_shaped",
+        "cylinder_racetrack",
+    ],
+)
+@pytest.mark.parametrize("order", [2, 3])
+def test_script_higher_order(order, script, tmp_path: Path):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    res = runner.invoke(script, [path.as_posix(), "--create-fibers", "--order", str(order)])
+    assert res.exit_code == 0
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert mesh_order(geo.mesh) == order
+    assert geo.info["order"] == order
+    assert geo.f0 is not None
+    # XDMF only supports meshes of order at most 2
+    assert (path / "mesh.xdmf").exists() == (order == 2)
+
+
+@pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
+def test_biv_fibers_higher_order(tmp_path: Path):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    res = runner.invoke(
+        cli.biv_ellipsoid,
+        [path.as_posix(), "--create-fibers", "--fiber-space", "P_1", "--order", "2"],
+    )
+    assert res.exit_code == 0
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert mesh_order(geo.mesh) == 2
+    assert geo.f0 is not None
+    assert np.allclose(np.linalg.norm(geo.f0.x.array.reshape(-1, 3), axis=1), 1.0)
+
+
+@pytest.mark.parametrize("clipped", [False, True])
+@pytest.mark.skipif(not HAS_UKB, reason="UKB atlas is not installed")
+@pytest.mark.skipif(not HAS_LDRB, reason="ldrb package is not installed")
+def test_ukb_higher_order(tmp_path: Path, clipped: bool):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    args = [
+        path.as_posix(),
+        "--char-length-max",
+        "10.0",
+        "--char-length-min",
+        "10.0",
+        "--create-fibers",
+        "--order",
+        "2",
+    ]
+    if clipped:
+        args.append("--clipped")
+    res = runner.invoke(cli.ukb, args)
+    assert res.exit_code == 0
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert mesh_order(geo.mesh) == 2
+    assert geo.f0 is not None
+    assert np.allclose(np.linalg.norm(geo.f0.x.array.reshape(-1, 3), axis=1), 1.0)
+
+
+def test_slab_dolfinx_higher_order_raises(tmp_path: Path):
+    from cardiac_geometries import mesh
+
+    with pytest.raises(ValueError, match="gmsh"):
+        mesh.slab(tmp_path, use_dolfinx=True, order=2)
