@@ -158,11 +158,12 @@ else:
 
 # and for the meshes from the UK Biobank atlas (see the [UK Biobank demo](ukb_atlas.py)),
 # i.e. `cardiac_geometries.mesh.ukb(outdir, order=2)`. Note that the surfaces of the atlas are
-# triangulations, so here the higher order nodes are placed on flat triangles. These meshes
-# therefore do not represent the geometry more accurately than the linear ones, but they are
-# still useful when you want to use isoparametric elements. Placing the nodes on the
-# triangulated surfaces can also invert some elements, which gmsh untangles with its high order
-# optimizer. This is fast for order 2, but can take a few minutes for order 3.
+# triangulations (with edges of about 3-4 mm), so here the higher order nodes are placed on
+# flat triangles. When the mesh is coarser than the atlas triangulation, the higher order mesh
+# still follows the surfaces more closely, but it cannot be more accurate than the triangulation
+# itself. Placing the nodes on the triangulated surfaces can also invert some elements, which
+# gmsh untangles with its high order optimizer. This is fast for order 2, but can take a few
+# minutes for order 3.
 #
 # ```{note}
 # XDMF does not support meshes of order higher than 2, so for these meshes the file `mesh.xdmf`
