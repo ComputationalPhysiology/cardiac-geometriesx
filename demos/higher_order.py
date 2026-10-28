@@ -163,67 +163,12 @@ print(np.linalg.norm(biv.f0.x.array.reshape(-1, 3), axis=1).min())
 
 # ## Meshes from the UK Biobank atlas
 #
-# The `order` argument also works for the meshes from the UK Biobank atlas (see the
-# [UK Biobank demo](ukb_atlas.py)). Here the surfaces are triangulations with sides of 3-4 mm, and
-# the nodes of the higher order elements can only be as accurate as the surfaces they are placed
-# on. With `refine` each triangle of the atlas is split into four `refine` times, and the new
-# nodes are placed on a smooth surface through the nodes of the atlas (see the documentation of
-# `ukb-atlas`). Together with quadratic elements this lets us use much coarser meshes.
-#
-# Let us compare the volume of the LV cavity of the LV geometry with closed valves, for a fine
-# linear mesh of the surfaces of the atlas, and a coarse quadratic mesh of the refined surfaces
-
-ukb_geos = {}
-for name, kwargs in {
-    "linear, 2 mm": dict(order=1, char_length_max=2.0, char_length_min=2.0),
-    "quadratic, 10 mm": dict(order=2, char_length_max=10.0, char_length_min=10.0, refine=2),
-}.items():
-    geodir = Path("ukb_" + name.replace(", ", "_").replace(" ", ""))
-    if not geodir.exists():
-        cardiac_geometries.mesh.ukb(
-            outdir=geodir, geometry="lv-closed", create_fibers=False, **kwargs
-        )
-    ukb_geos[name] = cardiac_geometries.geometry.Geometry.from_folder(
-        comm=MPI.COMM_WORLD, folder=geodir
-    )
-
-# As reference we use the volume enclosed by the surfaces of the cavity refined three times, which
-# is within 0.01% of the smooth surface
-
-import ukb.atlas  # noqa: E402
-import ukb.smooth  # noqa: E402
-import ukb.template  # noqa: E402
-
-points = ukb.atlas.generate_points(
-    ukb.atlas.download_atlas(Path.home() / ".ukb"), mode=-1, std=1.5
-).ED
-refined_points, refined_template = ukb.smooth.refine(points, 3)
-surface = ukb.template.extract(
-    refined_points, ["LV_ENDO", "MV_CAP", "AV_CAP"], template=refined_template
-)
-p = surface.points[surface.cells[0].data]
-cavity_reference = abs(np.einsum("ij,ij->i", p[:, 0], np.cross(p[:, 1], p[:, 2])).sum()) / 6
-
-for name, geo in ukb_geos.items():
-    assert geo.cfun is not None
-    tag = geo.markers["LV_CAVITY"][0]
-    dx = ufl.Measure("dx", domain=geo.mesh, subdomain_data=geo.cfun)
-    cavity = geo.mesh.comm.allreduce(
-        dolfinx.fem.assemble_scalar(dolfinx.fem.form(1.0 * dx(tag))),
-    )
-    num_local = geo.mesh.topology.index_map(3).size_local
-    wall_cells = geo.mesh.comm.allreduce(
-        (geo.cfun.find(geo.markers["Wall"][0]) < num_local).sum(),
-    )
-    print(
-        f"{name}: {wall_cells} cells in the wall, relative error in the volume of the "
-        f"LV cavity {abs(cavity - cavity_reference) / cavity_reference:.1e}",
-    )
-
-# The coarse quadratic mesh has 20 times fewer cells, and is still more accurate than the fine
-# linear mesh. Placing the nodes on the triangulated surfaces can invert some elements, which gmsh
-# untangles with its high order optimizer. This is fast for order 2, but can take a few minutes
-# for order 3.
+# The `order` argument also works for the meshes from the UK Biobank atlas, together with the
+# `refine` argument which places the nodes on smooth surfaces through the nodes of the atlas. See
+# the [higher order UK Biobank demo](ukb_higher_order.py) for a comparison of linear and quadratic
+# meshes of the atlas. Placing the nodes on the triangulated surfaces can invert some elements,
+# which gmsh untangles with its high order optimizer. This is fast for order 2, but can take a few
+# minutes for order 3.
 #
 # ```{note}
 # XDMF does not support meshes of order higher than 2, so for these meshes the file `mesh.xdmf`

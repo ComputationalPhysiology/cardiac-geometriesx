@@ -12,6 +12,7 @@ parts:
     - file: demos/cylinders.py
     - file: demos/ukb_atlas.py
     - file: demos/higher_order.py
+    - file: demos/ukb_higher_order.py
     - file: demos/additional_data.py
     - file: docs/gui.md
 
