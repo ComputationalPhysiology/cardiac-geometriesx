@@ -112,7 +112,8 @@ for order, geo in geos.items():
 # ## Fibers on a higher order mesh
 #
 # Fibers can be created on the higher order meshes just like on the linear meshes.
-# With quadratic elements it is natural to also represent the fibers in a quadratic space
+# With quadratic elements it is natural to also represent the fibers in a quadratic space. For the
+# LV ellipsoid the fibers are given by an analytic expression
 
 geodir = Path("lv_ellipsoid_order2_fibers")
 if not geodir.exists():
@@ -141,11 +142,14 @@ else:
 
 # ## Other geometries
 #
-# The `order` argument is available for all the geometries, e.g. for the BiV ellipsoid
+# The `order` argument is available for all the geometries, e.g. for the BiV ellipsoid. Here the
+# fibers are created with the rule-based method of Bayer et al. (2012) using `fenicsx-ldrb`
 
 geodir = Path("biv_ellipsoid_order2")
 if not geodir.exists():
-    cardiac_geometries.mesh.biv_ellipsoid(outdir=geodir, order=2, create_fibers=True)
+    cardiac_geometries.mesh.biv_ellipsoid(
+        outdir=geodir, order=2, create_fibers=True, fiber_space="P_2"
+    )
 biv = cardiac_geometries.geometry.Geometry.from_folder(comm=MPI.COMM_WORLD, folder=geodir)
 
 grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(biv.mesh))
@@ -160,6 +164,21 @@ else:
 
 assert biv.f0 is not None
 print(np.linalg.norm(biv.f0.x.array.reshape(-1, 3), axis=1).min())
+
+# The rule-based methods compute the fibers from the gradients of solutions of Laplace problems.
+# `fenicsx-ldrb` solves these with Lagrange elements of the same degree as the mesh, so on a
+# quadratic mesh the solutions are as accurate as the geometry. We can see this by calling
+# `fenicsx-ldrb` directly
+
+import ldrb  # noqa: E402
+
+system = ldrb.dolfinx_ldrb(
+    mesh=biv.mesh,
+    ffun=biv.ffun,
+    markers=cardiac_geometries.mesh.transform_markers(biv.markers),
+    fiber_space="P_2",
+)
+print(f"Degree of the Laplace solutions: {system.lv.function_space.element.basix_element.degree}")
 
 # ## Meshes from the UK Biobank atlas
 #
