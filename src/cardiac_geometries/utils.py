@@ -329,6 +329,12 @@ def save_mesh_to_xdmf(
     et: dolfinx.mesh.MeshTags | None,
     vt: dolfinx.mesh.MeshTags | None,
 ):
+    domain = mesh.ufl_domain()
+    assert domain is not None
+    if domain.ufl_coordinate_element().degree > 2:
+        # XDMF cannot represent cells of higher order, but they are saved to geometry.bp
+        logger.info(f"Skip saving {fname}: XDMF only supports meshes of order at most 2")
+        return
     # Save tags to xdmf
     with dolfinx.io.XDMFFile(comm, fname, "w") as xdmf:
         xdmf.write_mesh(mesh)

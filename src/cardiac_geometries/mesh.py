@@ -134,6 +134,8 @@ def ukb(
     clipped: bool = False,
     use_burns: bool = False,
     burns_path: Path | None = None,
+    refine: int = 0,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     geometry: str = "biv",
@@ -172,6 +174,13 @@ def ukb(
     burns_path : Path | None
         Path to the burns atlas file. This will be a .mat file which will be loaded
         using scipy.io.loadmat. This needs to be specified if `use_burns`.
+    refine : int, optional
+        Number of times to refine the surfaces of the atlas before meshing,
+        placing the new nodes on smooth surfaces through the nodes of the atlas.
+        This makes meshes of higher order more accurate, by default 0
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -228,6 +237,8 @@ def ukb(
             case,
             "--geometry",
             geometry,
+            "--refine",
+            str(refine),
         ]
         if use_burns:
             surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
@@ -242,6 +253,8 @@ def ukb(
             str(char_length_max),
             "--char_length_min",
             str(char_length_min),
+            "--order",
+            str(order),
         ]
         if clipped:
             ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
@@ -268,8 +281,10 @@ def ukb(
         "fiber_space": fiber_space,
         "cardiac_geometry_version": __version__,
         "mesh_type": "ukb",
+        "order": order,
         "geometry": geometry,
         "fiber_method": fiber_method,
+        "refine": refine,
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,
@@ -360,6 +375,7 @@ def biv_ellipsoid(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -395,6 +411,9 @@ def biv_ellipsoid(
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -426,6 +445,7 @@ def biv_ellipsoid(
         "fiber_angle_epi": fiber_angle_epi,
         "fiber_space": fiber_space,
         "mesh_type": "biv_ellipsoid",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -456,6 +476,7 @@ def biv_ellipsoid(
             rv_radius_y=rv_radius_y,
             rv_radius_z=rv_radius_z,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
@@ -536,6 +557,7 @@ def lv_ellipsoid(
     aha: bool = False,
     dmu_factor: float = 1 / 4,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -577,6 +599,9 @@ def lv_ellipsoid(
         Factor to determine the aha segmentation width, by default 1/4
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -608,6 +633,7 @@ def lv_ellipsoid(
         "aha": aha,
         "dmu_factor": dmu_factor,
         "mesh_type": "lv_ellipsoid",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -635,6 +661,7 @@ def lv_ellipsoid(
             mu_apex_epi=mu_apex_epi,
             psize_ref=psize_ref,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
 
@@ -831,6 +858,7 @@ def slab(
     fiber_space: str = "P_1",
     verbose: bool = False,
     use_dolfinx: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -860,6 +888,9 @@ def slab(
         If True print information from gmsh, by default False
     use_dolfinx : bool, optional
         If True use dolfinx to create the mesh, by default False (gmsh)
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -871,6 +902,8 @@ def slab(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
+    if use_dolfinx and order != 1:
+        raise ValueError("Meshes of higher order are only supported with gmsh (use_dolfinx=False)")
 
     outdir = Path(outdir)
     mesh_name = outdir / "slab.msh"
@@ -884,6 +917,7 @@ def slab(
         "fiber_angle_epi": fiber_angle_epi,
         "fiber_space": fiber_space,
         "mesh_type": "slab",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -907,6 +941,7 @@ def slab(
                 lz=lz,
                 dx=dx,
                 verbose=verbose,
+                order=order,
             )
     comm.barrier()
 
@@ -980,6 +1015,7 @@ def slab_in_bath(
     bz: float = 0.1,
     dx: float = 0.001,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1005,6 +1041,9 @@ def slab_in_bath(
         Element size, by default 0.001
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1028,6 +1067,7 @@ def slab_in_bath(
         "bz": bz,
         "dx": dx,
         "mesh_type": "slab-bath",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1053,6 +1093,7 @@ def slab_in_bath(
             bz=bz,
             dx=dx,
             verbose=verbose,
+            order=order,
         )
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
@@ -1097,6 +1138,7 @@ def cylinder(
     fiber_space: str = "P_1",
     aha: bool = False,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1130,6 +1172,9 @@ def cylinder(
         If True create 17-segment AHA regions
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1157,6 +1202,7 @@ def cylinder(
         "fiber_space": fiber_space,
         "aha": aha,
         "mesh_type": "cylinder",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1181,6 +1227,7 @@ def cylinder(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
 
@@ -1246,6 +1293,7 @@ def cylinder_elliptical(
     fiber_space: str = "P_1",
     aha: bool = False,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create a cylindrical geometry
@@ -1278,6 +1326,9 @@ def cylinder_elliptical(
         If True create 17-segment AHA regions
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
 
@@ -1303,6 +1354,7 @@ def cylinder_elliptical(
         "fiber_space": fiber_space,
         "aha": aha,
         "mesh_type": "cylinder_elliptical",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
     }
@@ -1326,6 +1378,7 @@ def cylinder_elliptical(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
 
@@ -1386,6 +1439,7 @@ def cylinder_racetrack(
     aha: bool = False,
     fillet_radius: float | None = None,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1426,6 +1480,9 @@ def cylinder_racetrack(
         By default None.
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1454,6 +1511,7 @@ def cylinder_racetrack(
         "aha": aha,
         "fillet_radius": fillet_radius,
         "mesh_type": "cylinder_racetrack",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1478,6 +1536,7 @@ def cylinder_racetrack(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            order=order,
             mode="racetrack",
             fillet_radius=fillet_radius,
         )
@@ -1550,6 +1609,7 @@ def cylinder_D_shaped(
     aha: bool = False,
     fillet_radius: float | None = None,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1594,6 +1654,9 @@ def cylinder_D_shaped(
         By default None.
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1624,6 +1687,7 @@ def cylinder_D_shaped(
         "aha": aha,
         "fillet_radius": fillet_radius,
         "mesh_type": "cylinder_D_shaped",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1651,6 +1715,7 @@ def cylinder_D_shaped(
                 mesh_name=mesh_name.as_posix(),
                 char_length=char_length,
                 verbose=verbose,
+                order=order,
             )
         else:
             cgc.cylinder_cut(
@@ -1664,6 +1729,7 @@ def cylinder_D_shaped(
                 mesh_name=mesh_name.as_posix(),
                 char_length=char_length,
                 verbose=verbose,
+                order=order,
                 mode="d_shaped",
                 fillet_radius=fillet_radius,
             )
