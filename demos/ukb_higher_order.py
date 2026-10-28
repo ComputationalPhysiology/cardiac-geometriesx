@@ -17,6 +17,10 @@
 # - a coarse linear mesh with a characteristic length of 10 mm
 # - a fine linear mesh with a characteristic length of 2.5 mm
 # - a coarse quadratic mesh with a characteristic length of 10 mm, of the surfaces refined twice
+#
+# We also create fibers with the rule-based method of
+# [Doste et al. (2019)](https://doi.org/10.1002/cnm.3185), which handles the outflow tracts of the
+# atlas. The fibers are represented in a space of the same degree as the mesh.
 
 from pathlib import Path
 
@@ -34,14 +38,14 @@ import cardiac_geometries
 
 comm = MPI.COMM_WORLD
 meshes = {
-    "linear, 10 mm": dict(order=1, char_length=10.0, refine=0),
-    "linear, 2.5 mm": dict(order=1, char_length=2.5, refine=0),
-    "quadratic, 10 mm": dict(order=2, char_length=10.0, refine=2),
+    "linear, 10 mm": dict(order=1, char_length=10.0, refine=0, fiber_space="P_1"),
+    "linear, 2.5 mm": dict(order=1, char_length=2.5, refine=0, fiber_space="P_1"),
+    "quadratic, 10 mm": dict(order=2, char_length=10.0, refine=2, fiber_space="P_2"),
 }
 
 geos = {}
 for name, kwargs in meshes.items():
-    geodir = Path("ukb_biv_" + name.replace(", ", "_").replace(" ", ""))
+    geodir = Path("ukb_biv_closed_" + name.replace(", ", "_").replace(" ", ""))
     if not geodir.exists():
         cardiac_geometries.mesh.ukb(
             outdir=geodir,
@@ -51,7 +55,8 @@ for name, kwargs in meshes.items():
             char_length_max=kwargs["char_length"],
             char_length_min=kwargs["char_length"],
             refine=kwargs["refine"],
-            create_fibers=False,
+            fiber_method="doste",
+            fiber_space=kwargs["fiber_space"],
         )
     geos[name] = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 
@@ -74,8 +79,8 @@ for name, geo in geos.items():
     num_dofs = V.dofmap.index_map.size_global * V.dofmap.index_map_bs
     print(f"{name}: {num_cells} cells in the wall and {num_dofs} P2 degrees of freedom")
 
-# The two coarse meshes have about the same size, while the fine linear mesh has six times as many
-# cells and degrees of freedom.
+# The two coarse meshes have about the same size, while the fine linear mesh has six to seven
+# times as many cells and degrees of freedom.
 #
 # Let us plot the coarse linear and the coarse quadratic mesh next to each other. The cells of the
 # quadratic mesh are curved, so we subdivide them when we extract the surface to plot.
@@ -189,40 +194,66 @@ else:
 #
 # ## Fibers
 #
-# Fibers can be created on the quadratic mesh in the same way as on the linear meshes, and it is
-# natural to represent them in a quadratic space as well. Here we use the open biventricular
-# geometry, for which fibers are generated with the method of Doste et al.
+# The fibers are computed from the gradients of solutions of Laplace problems, which
+# `fenicsx-ldrb` solves with Lagrange elements of the same degree as the mesh. On the quadratic
+# mesh both the geometry and the Laplace solutions are therefore more accurate than on the coarse
+# linear mesh, and so are the fibers.
+#
+# To see this, we compare the fibers on the two coarse meshes with the fibers on the fine linear
+# mesh. We evaluate all the fibers at a subset of the nodes of the fine mesh, and compute the angle
+# between them. Locating points in the curved cells of the quadratic mesh needs a few more Newton
+# iterations than the default.
 
-geodir = Path("ukb_biv_quadratic_fibers")
-if not geodir.exists():
-    cardiac_geometries.mesh.ukb(
-        outdir=geodir,
-        comm=comm,
-        order=2,
-        char_length_max=10.0,
-        char_length_min=10.0,
-        refine=2,
-        fiber_space="P_2",
+
+def evaluate(f, points):
+    """Evaluate `f` at `points`, with NaN for the points outside the (local) mesh"""
+    mesh = f.function_space.mesh
+    tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
+    candidates = dolfinx.geometry.compute_collisions_points(tree, points)
+    colliding = dolfinx.geometry.compute_colliding_cells(mesh, candidates, points)
+    values = np.full((len(points), 3), np.nan)
+    found = np.flatnonzero(np.diff(colliding.offsets) > 0)
+    cells = colliding.array[colliding.offsets[found]]
+    values[found] = f.eval(points[found], cells, tol=1e-8, maxit=50)
+    return values
+
+
+reference = geos["linear, 2.5 mm"].f0
+assert reference is not None
+points = reference.function_space.tabulate_dof_coordinates()[::5]
+fibers = {name: evaluate(geo.f0, points) for name, geo in geos.items()}
+# Use the points in the wall of all the meshes (the fibers are zero in the cavities)
+inside = np.all([np.linalg.norm(f, axis=1) > 0.5 for f in fibers.values()], axis=0)
+f_ref = fibers["linear, 2.5 mm"][inside]
+for name in ["linear, 10 mm", "quadratic, 10 mm"]:
+    f = fibers[name][inside]
+    cos = (
+        np.abs(np.sum(f * f_ref, axis=1))
+        / np.linalg.norm(f, axis=1)
+        / np.linalg.norm(f_ref, axis=1)
     )
-geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
-assert geo.f0 is not None
+    angle = np.degrees(np.arccos(np.clip(cos, 0, 1)))
+    print(
+        f"{name}: angle to the fibers on the fine linear mesh, median {np.median(angle):.1f} "
+        f"degrees and 90th percentile {np.percentile(angle, 90):.1f} degrees",
+    )
 
+# The fibers on the coarse quadratic mesh are much closer to the fibers on the fine mesh.
+#
+# Finally, let us plot the fibers on the quadratic mesh
+
+geo = geos["quadratic, 10 mm"]
+assert geo.f0 is not None
 topology, cell_types, x = dolfinx.plot.vtk_mesh(geo.f0.function_space)
 function_grid = pyvista.UnstructuredGrid(topology, cell_types, x)
 function_grid["f0"] = geo.f0.x.array.real.reshape((x.shape[0], 3))
 # Plot only some of the fibers, so that the plot is not too cluttered
 glyphs = function_grid.glyph(orient="f0", factor=4.0, tolerance=0.02)
-grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(geo.mesh))
 plotter = pyvista.Plotter()
-plotter.add_mesh(grid.extract_surface(nonlinear_subdivision=3), color="lightgrey", opacity=0.3)
+plotter.add_mesh(wall_surface(geo, subdivision=3), color="lightgrey", opacity=0.3)
 plotter.add_mesh(glyphs, show_scalar_bar=False)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
 else:
     figure = plotter.screenshot("ukb_higher_order_fibers.png")
-
-# ```{note}
-# The fibers are computed from Laplace problems that are solved with linear elements, so on a
-# coarse mesh the fibers are less accurate than the geometry.
-# ```
