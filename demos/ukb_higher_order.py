@@ -214,7 +214,20 @@ def evaluate(f, points):
     values = np.full((len(points), 3), np.nan)
     found = np.flatnonzero(np.diff(colliding.offsets) > 0)
     cells = colliding.array[colliding.offsets[found]]
-    values[found] = f.eval(points[found], cells, tol=1e-8, maxit=50)
+    try:
+        values[found] = f.eval(points[found], cells, tol=1e-8, maxit=50)
+    except RuntimeError:
+        # The collision test uses the convex hull of the nodes of a curved cell, so a point
+        # near the boundary may be found in a cell that it is not in, and the pull back of
+        # it fails. Try all the colliding cells of each point instead, and skip the point if
+        # none of them contain it.
+        for i in found:
+            for cell in colliding.links(i):
+                try:
+                    values[i] = f.eval(points[i], [cell], tol=1e-8, maxit=50)
+                    break
+                except RuntimeError:
+                    pass
     return values
 
 

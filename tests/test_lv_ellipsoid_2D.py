@@ -45,7 +45,8 @@ def test_lv_ellipsoid_2D_mesh(geo_2d: Geometry):
         assert geo_2d.markers[name][1] == dim
     assert geo_2d.vfun is not None
     assert geo_2d.vfun.dim == 0
-    # The meridian is in the upper half plane, with the apex at x = -17 and the base at x = 5
+    # The meridian is in the upper half plane, with the epicardial apex at x = -20 and the base
+    # at x = 5
     x = mesh.geometry.x
     assert x[:, 1].min() > -1e-12
     assert np.isclose(mesh.comm.allreduce(x[:, 0].min(), op=MPI.MIN), -20.0)
@@ -74,7 +75,7 @@ def test_transmural_coordinate(geo_2d: Geometry):
     # and t solves the equation of the ellipsoid everywhere inside
     x = V.tabulate_dof_coordinates()
     inside = (t.x.array > 1e-8) & (t.x.array < 1 - 1e-8)
-    assert inside.any()
+    assert mesh.comm.allreduce(inside.any(), op=MPI.LOR)
     assert np.allclose(ellipsoid_residual(x[inside], t.x.array[inside]), 0.0, atol=1e-12)
 
 
@@ -125,4 +126,5 @@ def test_lv_ellipsoid_2D_cli(tmp_path: Path):
     assert geo.f0 is not None
     assert geo.f0.ufl_shape == (3,)
     assert geo.vfun is not None
-    assert geo.markers["ENDOPT"][0] in geo.vfun.values
+    # The tags are local, so the apex is on one of the processes only
+    assert comm.allreduce(geo.markers["ENDOPT"][0] in geo.vfun.values, op=MPI.LOR)
