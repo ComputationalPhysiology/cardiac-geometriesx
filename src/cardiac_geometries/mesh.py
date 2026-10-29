@@ -766,6 +766,200 @@ def lv_ellipsoid(
     )
 
 
+def lv_ellipsoid_2D(
+    outdir: Path | str,
+    r_short_endo: float = 7.0,
+    r_short_epi: float = 10.0,
+    r_long_endo: float = 17.0,
+    r_long_epi: float = 20.0,
+    psize_ref: float = 3,
+    mu_apex_endo: float = math.pi,
+    mu_base_endo: float = math.acos(5 / 17),
+    mu_apex_epi: float = math.pi,
+    mu_base_epi: float = math.acos(5 / 20),
+    create_fibers: bool = False,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
+    fiber_space: str = "P_1",
+    verbose: bool = False,
+    order: int = 1,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+) -> Geometry:
+    """Create the meridian of an LV ellipsoid, for axisymmetric problems
+
+    The mesh lies in the plane z = 0, with the long axis along x and the radial
+    direction along y, and has geometric dimension 2. The angles mu must be in
+    [0, pi] so that y = r_short sin(mu) >= 0: unlike `lv_ellipsoid`, whose
+    default angles are negative, the defaults here give the same ellipsoid
+    with the meridian in the upper half plane. ``APEX`` marks
+    the segment of the axis between the two apices, where an axisymmetric
+    problem needs its symmetry condition.
+
+    The fibers have three components: the axial, the radial and the
+    circumferential one. The fiber angle varies linearly in the transmural
+    coordinate of the ellipsoid itself (see
+    `cardiac_geometries.fibers.lv_ellipsoid.transmural_coordinate`), as a
+    planar Laplace problem on the meridian is not the axisymmetric one.
+
+    Parameters
+    ----------
+    outdir : Optional[Path], optional
+        Directory where to save the results.
+    r_short_endo : float, optional
+        Shortest radius on the endocardium layer, by default 7.0
+    r_short_epi : float, optional
+       Shortest radius on the epicardium layer, by default 10.0
+    r_long_endo : float, optional
+        Longest radius on the endocardium layer, by default 17.0
+    r_long_epi : float, optional
+        Longest radius on the epicardium layer, by default 20.0
+    psize_ref : float, optional
+        The reference point size (smaller values yield as finer mesh, by default 3
+    mu_apex_endo : float, optional
+        Angle for the endocardial apex, by default math.pi
+    mu_base_endo : float, optional
+        Angle for the endocardial base, by default math.acos(5 / 17)
+    mu_apex_epi : float, optional
+        Angle for the epicardial apex, by default math.pi
+    mu_base_epi : float, optional
+        Angle for the epicardial base, by default math.acos(5 / 20)
+    create_fibers : bool, optional
+        If True create analytic fibers, by default False
+    fiber_angle_endo : float, optional
+        Angle for the endocardium, by default 60
+    fiber_angle_epi : float, optional
+        Angle for the epicardium, by default -60
+    fiber_space : str, optional
+        Function space for fibers of the form family_degree, by default "P_1"
+    verbose : bool, optional
+        If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+
+    Returns
+    -------
+    cardiac_geometries.geometry.Geometry
+        A Geometry with the mesh, markers, markers functions and fibers.
+
+    """
+
+    for name, mu in [
+        ("mu_apex_endo", mu_apex_endo),
+        ("mu_base_endo", mu_base_endo),
+        ("mu_apex_epi", mu_apex_epi),
+        ("mu_base_epi", mu_base_epi),
+    ]:
+        if not 0.0 <= mu <= math.pi:
+            raise ValueError(
+                f"{name} = {mu} is not in [0, pi], so the meridian would not be at y >= 0"
+            )
+
+    outdir = Path(outdir)
+    mesh_name = outdir / "lv_ellipsoid_2D.msh"
+    info = {
+        "r_short_endo": r_short_endo,
+        "r_short_epi": r_short_epi,
+        "r_long_endo": r_long_endo,
+        "r_long_epi": r_long_epi,
+        "psize_ref": psize_ref,
+        "mu_apex_endo": mu_apex_endo,
+        "mu_base_endo": mu_base_endo,
+        "mu_apex_epi": mu_apex_epi,
+        "mu_base_epi": mu_base_epi,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "mesh_type": "lv_ellipsoid_2D",
+        "order": order,
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
+    }
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
+
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                info,
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
+
+        cgc.lv_ellipsoid_2D(
+            mesh_name=mesh_name.as_posix(),
+            r_short_endo=r_short_endo,
+            r_short_epi=r_short_epi,
+            r_long_endo=r_long_endo,
+            r_long_epi=r_long_epi,
+            mu_base_endo=mu_base_endo,
+            mu_base_epi=mu_base_epi,
+            mu_apex_endo=mu_apex_endo,
+            mu_apex_epi=mu_apex_epi,
+            psize_ref=psize_ref,
+            verbose=verbose,
+            order=order,
+        )
+    comm.barrier()
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode, gdim=2)
+
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
+
+    f0 = s0 = n0 = None
+    if create_fibers:
+        from .fibers.lv_ellipsoid import create_microstructure
+
+        system = create_microstructure(
+            mesh=geometry.mesh,
+            ffun=geometry.ffun,
+            markers=geometry.markers,
+            function_space=fiber_space,
+            r_short_endo=r_short_endo,
+            r_short_epi=r_short_epi,
+            r_long_endo=r_long_endo,
+            r_long_epi=r_long_epi,
+            alpha_endo=fiber_angle_endo,
+            alpha_epi=fiber_angle_epi,
+            outdir=outdir,
+            transmural="analytic",
+        )
+        f0, s0, n0 = system.f0, system.s0, system.n0
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        vfun=geometry.vfun,
+        f0=f0,
+        s0=s0,
+        n0=n0,
+    )
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        vfun=geometry.vfun,
+        f0=f0,
+        s0=s0,
+        n0=n0,
+        info=info,
+    )
+
+
 def slab_dolfinx(
     comm,
     outdir: Path,
