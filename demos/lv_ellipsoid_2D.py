@@ -3,7 +3,8 @@
 # i.e. the cross section of the wall with a plane through the long axis. If the problem you
 # want to solve is axisymmetric, such as the inflation of the LV in the benchmark of
 # [Land et al. (2015)](https://doi.org/10.1098/rspa.2015.0641), you only need to solve it on
-# this two dimensional mesh.
+# this two dimensional mesh. Note that with fibers the ventricle also twists, so the
+# displacement then has a circumferential component as well, just like the fibers below.
 #
 # The long axis is the $x$-axis and the radial direction is the $y$-axis, and the meridian lies in
 # the upper half plane $y \geq 0$. The default radii and angles give the ellipsoid of the
@@ -76,11 +77,13 @@ else:
 #
 # The fiber angle varies linearly in the transmural coordinate $t$ of the ellipsoid itself:
 # the point is on the ellipsoid with radii interpolated linearly between the endocardium
-# ($t = 0$) and the epicardium ($t = 1$), as in the benchmark. A Laplace problem on the
-# meridian would not give this coordinate, as the Laplace problem in the plane is not the
-# axisymmetric one. Let us plot $t$
+# ($t = 0$) and the epicardium ($t = 1$), as in the benchmark. This is not the solution of a
+# Laplace problem, which is what the three dimensional `lv_ellipsoid` uses by default (and on
+# the meridian, the Laplace problem in the plane is not even the axisymmetric one). Let us
+# plot $t$
 
 V = dolfinx.fem.functionspace(geo.mesh, ("Lagrange", 1))
+t_grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(V))
 t = transmural_coordinate(
     V,
     r_short_endo=geo.info["r_short_endo"],
@@ -88,9 +91,9 @@ t = transmural_coordinate(
     r_long_endo=geo.info["r_long_endo"],
     r_long_epi=geo.info["r_long_epi"],
 )
-grid.point_data["t"] = t.x.array
+t_grid.point_data["t"] = t.x.array
 plotter = pyvista.Plotter()
-plotter.add_mesh(grid, scalars="t", cmap="viridis", clim=[0.0, 1.0])
+plotter.add_mesh(t_grid, scalars="t", cmap="viridis", clim=[0.0, 1.0])
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
@@ -114,9 +117,10 @@ print(
     f"Fiber angle {geo.info['fiber_angle_endo']} at the endocardium and "
     f"{geo.info['fiber_angle_epi']} at the epicardium",
 )
-grid.point_data["helix angle"] = helix_angle
+f0_grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(geo.f0.function_space))
+f0_grid.point_data["helix angle"] = helix_angle
 plotter = pyvista.Plotter()
-plotter.add_mesh(grid, scalars="helix angle", cmap="coolwarm")
+plotter.add_mesh(f0_grid, scalars="helix angle", cmap="coolwarm")
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
