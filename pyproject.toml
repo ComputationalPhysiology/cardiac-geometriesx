@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cardiac-geometriesx"
-version = "0.16.0"
+version = "0.17.0"
 description = "A python library for cardiac geometries"
 authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
 license = {text = "MIT"}
@@ -21,11 +21,12 @@ classifiers = [
 ]
 keywords = ["cardiac", "geometry"]
 urls = {Homepage = "https://github.com/finsberg/cardiac-geometriesx" }
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
-    "fenics-dolfinx>=0.9.0",
+    "fenics-dolfinx>=0.10.0",
+    "fenicsx-compat>=0.4.0",
     "structlog",
-    "cardiac-geometries-core>=0.4",
+    "cardiac-geometries-core>=1.6.0",
     "rich-click",
     "io4dolfinx",
     "scifem",
@@ -53,8 +54,8 @@ docs = [
     "vtk>=9.5.0",
     "trame-vuetify",
     "ipywidgets",
-    "fenicsx-ldrb",
-    "ukb-atlas",
+    "fenicsx-ldrb>=0.3.0",
+    "ukb-atlas>=2.1.0",
     "sphinx-codeautolink",
     "sphinx-copybutton",
 ]
@@ -62,8 +63,8 @@ test = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ukb-atlas[pyvista]",
-    "fenicsx-ldrb",
+    "ukb-atlas[pyvista]>=2.1.0",
+    "fenicsx-ldrb>=0.3.0",
 ]
 gui = [
     "streamlit",
@@ -71,7 +72,7 @@ gui = [
     "pyvista[all]>=0.43.0",
     "trame-vuetify",
     "ipywidgets",
-    "fenicsx-ldrb",
+    "fenicsx-ldrb>=0.3.0",
 
 ]
 all = [
@@ -155,8 +156,8 @@ exclude = [
 # Same as Black.
 line-length = 100
 
-# Assume Python 3.10.
-target-version = "py310"
+# Assume Python 3.12.
+target-version = "py312"
 
 [tool.ruff.lint]
 # Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
@@ -206,7 +207,7 @@ tag = true
 sign_tags = false
 tag_name = "v{new_version}"
 tag_message = "Bump version: {current_version} → {new_version}"
-current_version = "0.16.0"
+current_version = "0.17.0"
 
 
 [[tool.bumpversion.files]]

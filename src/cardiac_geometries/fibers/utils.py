@@ -8,11 +8,8 @@ import io4dolfinx
 import numpy as np
 import ufl
 from dolfinx.fem.petsc import LinearProblem
-from packaging.version import Version
 
 from ..utils import element2array, json_serial, space_from_string
-
-_dolfinx_version = Version(dolfinx.__version__)
 
 
 class Microstructure(NamedTuple):
@@ -92,10 +89,11 @@ def laplace(
     a = ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
     L = v * dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0)) * ufl.dx
 
+    fdim = mesh.topology.dim - 1
     endo_facets = ffun.find(endo_marker)
-    endo_dofs = dolfinx.fem.locate_dofs_topological(V, 2, endo_facets)
+    endo_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, endo_facets)
     epi_facets = ffun.find(epi_marker)
-    epi_dofs = dolfinx.fem.locate_dofs_topological(V, 2, epi_facets)
+    epi_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, epi_facets)
     zero = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
     one = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1.0))
 
@@ -104,17 +102,12 @@ def laplace(
 
     bcs = [endo_bc, epi_bc]
 
-    kwargs: dict[str, str] = {}
-    if _dolfinx_version >= Version("0.10"):
-        kwargs["petsc_options_prefix"] = "cardiac_geometriesx_laplace"
-
-    # petsc_options_prefix became a required keyword argument in dolfinx 0.10.
-    problem = LinearProblem(  # type: ignore[call-overload]
+    problem = LinearProblem(
         a,
         L,
         bcs=bcs,
         petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
-        **kwargs,  # type: ignore[arg-type]
+        petsc_options_prefix="cardiac_geometriesx_laplace",
     )
     uh = problem.solve()
     assert isinstance(uh, dolfinx.fem.Function)
@@ -122,11 +115,7 @@ def laplace(
     if function_space != "P_1":
         W = space_from_string(function_space, mesh, dim=1)
         t = dolfinx.fem.Function(W)
-        if _dolfinx_version >= Version("0.10"):
-            points = W.element.interpolation_points
-        else:
-            # interpolation_points became a property (instead of a method) in dolfinx 0.10.
-            points = W.element.interpolation_points()  # type: ignore[operator]
+        points = W.element.interpolation_points
 
         expr = dolfinx.fem.Expression(uh, points)
         t.interpolate(expr)

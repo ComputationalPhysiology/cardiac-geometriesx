@@ -68,6 +68,68 @@ def mu_theta(
     return mu, theta, perm
 
 
+def transmural_coordinate(
+    V: dolfinx.fem.FunctionSpace,
+    r_short_endo=0.025,
+    r_short_epi=0.035,
+    r_long_endo=0.09,
+    r_long_epi=0.097,
+    long_axis: int = 0,
+    num_iterations: int = 60,
+) -> dolfinx.fem.Function:
+    """The transmural coordinate t in [0, 1] of the ellipsoid, as defined in
+    the benchmark of Land et al. (2015): the point lies on the ellipsoid with
+    radii r_short(t) and r_long(t), interpolated linearly between the
+    endocardium (t = 0) and the epicardium (t = 1).
+
+    The root is found by bisection, as
+    (r^2 - x_long^2) / r_short(t)^2 + x_long^2 / r_long(t)^2 - 1
+    decreases with t. Points just outside the wall get t = 0 or t = 1.
+
+    Parameters
+    ----------
+    V : dolfinx.fem.FunctionSpace
+        Scalar function space of the transmural coordinate
+    r_short_endo : float, optional
+        Short radius at the endocardium, by default 0.025
+    r_short_epi : float, optional
+        Short radius at the epicardium, by default 0.035
+    r_long_endo : float, optional
+        Long radius at the endocardium, by default 0.09
+    r_long_epi : float, optional
+        Long radius at the epicardium, by default 0.097
+    long_axis : int, optional
+        Long axis, by default 0 (x-axis)
+    num_iterations : int, optional
+        Number of bisection steps, by default 60
+
+    Returns
+    -------
+    dolfinx.fem.Function
+        The transmural coordinate
+    """
+    x = V.tabulate_dof_coordinates()
+    b2 = x[:, long_axis] ** 2
+    a2 = (x**2).sum(axis=1) - b2
+
+    def g(t):
+        rs = r_short_endo + (r_short_epi - r_short_endo) * t
+        rl = r_long_endo + (r_long_epi - r_long_endo) * t
+        return a2 / rs**2 + b2 / rl**2 - 1.0
+
+    lo = np.zeros_like(b2)
+    hi = np.ones_like(b2)
+    for _ in range(num_iterations):
+        mid = 0.5 * (lo + hi)
+        outside = g(mid) > 0.0
+        lo = np.where(outside, mid, lo)
+        hi = np.where(outside, hi, mid)
+
+    t = dolfinx.fem.Function(V, name="t")
+    t.x.array[:] = 0.5 * (lo + hi)
+    return t
+
+
 def compute_system(
     t_func: dolfinx.fem.Function,
     r_short_endo=0.025,
@@ -167,10 +229,12 @@ def compute_system(
     s0 = np.cross(f0, n0, axis=0)
     s0 = utils.normalize(s0)
 
+    # The fibers have three components also on the meridian of an axisymmetric
+    # geometry, where the third one is the circumferential direction
     Vv = space_from_string(
         space_string=f"{element.family_name}_{element.degree}",
         mesh=mesh,
-        dim=mesh.geometry.dim,
+        dim=3,
         discontinuous=element.discontinuous,
     )
 
@@ -203,21 +267,43 @@ def create_microstructure(
     alpha_epi: float = 60,
     long_axis: int = 0,
     outdir: str | Path | None = None,
+    transmural: str = "laplace",
     **kwargs,
 ):
-    endo_marker = markers["ENDO"][0]
-    epi_marker = markers["EPI"][0]
-    t = utils.laplace(
-        mesh,
-        ffun,
-        endo_marker=endo_marker,
-        epi_marker=epi_marker,
-        function_space=function_space,
-    )
+    """Create the microstructure of an LV ellipsoid.
+
+    `transmural` selects the transmural coordinate the fiber angle varies
+    linearly in: ``"laplace"``, the solution of a Laplace problem between ENDO
+    and EPI, or ``"analytic"``, the coordinate of the ellipsoid itself (see
+    `transmural_coordinate`), which is the one of the benchmark of Land et al.
+    (2015). Use ``"analytic"`` on the meridian of an axisymmetric geometry,
+    where a planar Laplace problem is not the axisymmetric one.
+    """
+    if transmural == "laplace":
+        t = utils.laplace(
+            mesh,
+            ffun,
+            endo_marker=markers["ENDO"][0],
+            epi_marker=markers["EPI"][0],
+            function_space=function_space,
+        )
+    elif transmural == "analytic":
+        t = transmural_coordinate(
+            space_from_string(function_space, mesh, dim=1),
+            r_short_endo=r_short_endo,
+            r_short_epi=r_short_epi,
+            r_long_endo=r_long_endo,
+            r_long_epi=r_long_epi,
+            long_axis=long_axis,
+        )
+    else:
+        raise ValueError(
+            f"Unknown transmural coordinate {transmural!r}, expected 'laplace' or 'analytic'"
+        )
 
     if outdir is not None:
         try:
-            with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / "laplace.bp", [t]) as file:
+            with dolfinx.io.VTXWriter(mesh.comm, Path(outdir) / f"{transmural}.bp", [t]) as file:
                 file.write(0.0)
         except (RuntimeError, ValueError):
             pass

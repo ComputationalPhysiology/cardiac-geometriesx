@@ -21,11 +21,27 @@ __version__ = meta["Version"]
 
 logger = get_logger()
 
+UKB_GEOMETRIES = ("biv", "biv-closed", "lv", "lv-closed")
+
 
 def transform_markers(
     markers: dict[str, tuple[int, int]], clipped: bool = False
 ) -> dict[str, list[int]]:
-    if "ENDO_RV" in markers:
+    if "LV_ENDO" in markers:
+        # UKB geometries from ukb-atlas >= 2.0
+        epi = [markers["EPI"][0]]
+        if "RV_SEPTUM" in markers:
+            # The LV-only geometries are closed on the RV side by the RV septum
+            epi.append(markers["RV_SEPTUM"][0])
+        if "BASE" in markers:
+            base = [markers["BASE"][0]]
+        else:
+            base = [markers[valve][0] for valve in ("MV", "AV", "TV", "PV") if valve in markers]
+        transformed = {"lv": [markers["LV_ENDO"][0]], "epi": epi, "base": base}
+        if "RV_ENDO" in markers:
+            transformed["rv"] = [markers["RV_ENDO"][0]]
+        return transformed
+    elif "ENDO_RV" in markers:
         return {
             "lv": [markers["ENDO_LV"][0]],
             "rv": [markers["ENDO_RV"][0]],
@@ -76,6 +92,34 @@ def transform_markers(
         return {k: [v[0]] for k, v in markers.items()}
 
 
+def doste_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
+    """Markers for the method of Doste et al. (`ldrb.dolfinx_doste`) from the
+    markers of the UKB geometries (ukb-atlas >= 2.0), which need the valves."""
+    missing = {"LV_ENDO", "EPI", "MV", "AV"} - set(markers)
+    if missing:
+        raise ValueError(
+            f"The method of Doste et al. needs the markers {sorted(missing)}, which are only "
+            "in the UKB geometries with outflow tracts (not clipped)"
+        )
+    epi = [markers["EPI"][0]]
+    if "RV_SEPTUM" in markers:
+        # The LV-only geometries are closed on the RV side by the RV septum
+        epi.append(markers["RV_SEPTUM"][0])
+    transformed = {
+        "lv": [markers["LV_ENDO"][0]],
+        "epi": epi,
+        "mv": [markers["MV"][0]],
+        "av": [markers["AV"][0]],
+    }
+    if "RV_ENDO" in markers:
+        transformed |= {
+            "rv": [markers["RV_ENDO"][0]],
+            "tv": [markers["TV"][0]],
+            "pv": [markers["PV"][0]],
+        }
+    return transformed
+
+
 def ukb(
     outdir: str | Path,
     mode: int = -1,
@@ -90,8 +134,12 @@ def ukb(
     clipped: bool = False,
     use_burns: bool = False,
     burns_path: Path | None = None,
+    refine: int = 0,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    geometry: str = "biv",
+    fiber_method: str | None = None,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -126,10 +174,30 @@ def ukb(
     burns_path : Path | None
         Path to the burns atlas file. This will be a .mat file which will be loaded
         using scipy.io.loadmat. This needs to be specified if `use_burns`.
+    refine : int, optional
+        Number of times to refine the surfaces of the atlas before meshing,
+        placing the new nodes on smooth surfaces through the nodes of the atlas.
+        This makes meshes of higher order more accurate, by default 0
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    geometry : str, optional
+        Which geometry to create: biventricular ("biv") or LV only ("lv"), with
+        open valves, or with the valves closed by caps ("biv-closed", "lv-closed").
+        The closed geometries also mesh the cavities, which are marked as
+        "LV_CAVITY" and "RV_CAVITY" in the cell tags, while the myocardium is
+        marked as "Wall". Fibers are only created in the wall. By default "biv".
+    fiber_method : str | None, optional
+        Rule-based method for the fibers: "doste" for the method of Doste et al.
+        (2019), which handles the outflow tracts, or "ldrb" for the method of
+        Bayer et al. (2012). With "doste", `fiber_angle_endo` and
+        `fiber_angle_epi` are the angles in the LV, while the RV and outflow
+        tracts get the angles from the paper. By default "doste", or "ldrb" for
+        clipped meshes, which have no outflow tracts.
 
     Returns
     -------
@@ -137,6 +205,17 @@ def ukb(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
+    if geometry not in UKB_GEOMETRIES:
+        raise ValueError(f"Unknown geometry {geometry!r}, expected one of {UKB_GEOMETRIES}")
+    if clipped and geometry != "biv":
+        raise ValueError("Clipping is only supported for the 'biv' geometry")
+    if fiber_method is None:
+        fiber_method = "ldrb" if clipped else "doste"
+    if fiber_method not in ("ldrb", "doste"):
+        raise ValueError(f"Unknown fiber method {fiber_method!r}, expected 'ldrb' or 'doste'")
+    if clipped and fiber_method == "doste":
+        raise ValueError("The 'doste' fiber method needs the outflow tracts, use 'ldrb'")
+
     try:
         import ukb.cli
     except ImportError as e:
@@ -147,7 +226,20 @@ def ukb(
         raise ImportError(msg) from e
 
     if comm.rank == 0:
-        surf_args = ["surf", str(outdir), "--mode", str(mode), "--std", str(std), "--case", case]
+        surf_args = [
+            "surf",
+            str(outdir),
+            "--mode",
+            str(mode),
+            "--std",
+            str(std),
+            "--case",
+            case,
+            "--geometry",
+            geometry,
+            "--refine",
+            str(refine),
+        ]
         if use_burns:
             surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
 
@@ -161,6 +253,8 @@ def ukb(
             str(char_length_max),
             "--char_length_min",
             str(char_length_min),
+            "--order",
+            str(order),
         ]
         if clipped:
             ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
@@ -175,7 +269,7 @@ def ukb(
     else:
         mesh_name = outdir / f"{case}.msh"
 
-    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
+    gmsh_geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
     info = {
         "mode": mode,
         "std": std,
@@ -187,6 +281,10 @@ def ukb(
         "fiber_space": fiber_space,
         "cardiac_geometry_version": __version__,
         "mesh_type": "ukb",
+        "order": order,
+        "geometry": geometry,
+        "fiber_method": fiber_method,
+        "refine": refine,
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,
@@ -194,34 +292,29 @@ def ukb(
     }
     if comm.rank == 0:
         (outdir / "markers.json").write_text(
-            json.dumps(geometry.markers, default=utils.json_serial)
+            json.dumps(gmsh_geometry.markers, default=utils.json_serial)
         )
         (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
 
     fibers = {}
     if create_fibers:
-        try:
-            import ldrb
-        except ImportError as ex:
-            msg = (
-                "To create fibers you need to install the ldrb package "
-                "which you can install with pip install fenicsx-ldrb"
-            )
-            raise ImportError(msg) from ex
+        from .fibers import ldrb_fibers
 
-        markers = transform_markers(geometry.markers, clipped=clipped)
-        system = ldrb.dolfinx_ldrb(
-            mesh=geometry.mesh,
-            ffun=geometry.ffun,
-            markers=markers,
-            alpha_endo_lv=fiber_angle_endo,
-            alpha_epi_lv=fiber_angle_epi,
-            beta_endo_lv=0,
-            beta_epi_lv=0,
+        angles = {"alpha_endo_lv": fiber_angle_endo, "alpha_epi_lv": fiber_angle_epi}
+        if fiber_method == "ldrb":
+            angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
+        system, microstructure = ldrb_fibers(
+            mesh=gmsh_geometry.mesh,
+            ffun=gmsh_geometry.ffun,
+            cfun=gmsh_geometry.cfun,
+            markers=gmsh_geometry.markers,
+            clipped=clipped,
+            fiber_method=fiber_method,
             fiber_space=fiber_space,
+            **angles,
         )
 
-        fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
+        fibers = microstructure._asdict()
 
         for k, v in system._asdict().items():
             if v is None:
@@ -236,13 +329,13 @@ def ukb(
 
     save_geometry(
         path=outdir / "geometry.bp",
-        mesh=geometry.mesh,
-        markers=geometry.markers,
+        mesh=gmsh_geometry.mesh,
+        markers=gmsh_geometry.markers,
         info=info,
-        cfun=geometry.cfun,
-        ffun=geometry.ffun,
-        efun=geometry.efun,
-        vfun=geometry.vfun,
+        cfun=gmsh_geometry.cfun,
+        ffun=gmsh_geometry.ffun,
+        efun=gmsh_geometry.efun,
+        vfun=gmsh_geometry.vfun,
         f0=fibers.get("f0", None),
         s0=fibers.get("s0", None),
         n0=fibers.get("n0", None),
@@ -250,12 +343,12 @@ def ukb(
     # geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     # return geo
     return Geometry(
-        mesh=geometry.mesh,
-        markers=geometry.markers,
-        cfun=geometry.cfun,
-        ffun=geometry.ffun,
-        efun=geometry.efun,
-        vfun=geometry.vfun,
+        mesh=gmsh_geometry.mesh,
+        markers=gmsh_geometry.markers,
+        cfun=gmsh_geometry.cfun,
+        ffun=gmsh_geometry.ffun,
+        efun=gmsh_geometry.efun,
+        vfun=gmsh_geometry.vfun,
         f0=fibers.get("f0", None),
         s0=fibers.get("s0", None),
         n0=fibers.get("n0", None),
@@ -282,6 +375,7 @@ def biv_ellipsoid(
     fiber_angle_epi: float = -60,
     fiber_space: str = "P_1",
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -317,6 +411,9 @@ def biv_ellipsoid(
         Function space for fibers of the form family_degree, by default "P_1"
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -348,6 +445,7 @@ def biv_ellipsoid(
         "fiber_angle_epi": fiber_angle_epi,
         "fiber_space": fiber_space,
         "mesh_type": "biv_ellipsoid",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -378,6 +476,7 @@ def biv_ellipsoid(
             rv_radius_y=rv_radius_y,
             rv_radius_z=rv_radius_z,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
@@ -458,6 +557,7 @@ def lv_ellipsoid(
     aha: bool = False,
     dmu_factor: float = 1 / 4,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -499,6 +599,9 @@ def lv_ellipsoid(
         Factor to determine the aha segmentation width, by default 1/4
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -530,6 +633,7 @@ def lv_ellipsoid(
         "aha": aha,
         "dmu_factor": dmu_factor,
         "mesh_type": "lv_ellipsoid",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -557,6 +661,7 @@ def lv_ellipsoid(
             mu_apex_epi=mu_apex_epi,
             psize_ref=psize_ref,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
 
@@ -661,6 +766,200 @@ def lv_ellipsoid(
     )
 
 
+def lv_ellipsoid_2D(
+    outdir: Path | str,
+    r_short_endo: float = 7.0,
+    r_short_epi: float = 10.0,
+    r_long_endo: float = 17.0,
+    r_long_epi: float = 20.0,
+    psize_ref: float = 3,
+    mu_apex_endo: float = math.pi,
+    mu_base_endo: float = math.acos(5 / 17),
+    mu_apex_epi: float = math.pi,
+    mu_base_epi: float = math.acos(5 / 20),
+    create_fibers: bool = False,
+    fiber_angle_endo: float = 60,
+    fiber_angle_epi: float = -60,
+    fiber_space: str = "P_1",
+    verbose: bool = False,
+    order: int = 1,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+) -> Geometry:
+    """Create the meridian of an LV ellipsoid, for axisymmetric problems
+
+    The mesh lies in the plane z = 0, with the long axis along x and the radial
+    direction along y, and has geometric dimension 2. The angles mu must be in
+    [0, pi] so that y = r_short sin(mu) >= 0: unlike `lv_ellipsoid`, whose
+    default angles are negative, the defaults here give the same ellipsoid
+    with the meridian in the upper half plane. ``APEX`` marks
+    the segment of the axis between the two apices, where an axisymmetric
+    problem needs its symmetry condition.
+
+    The fibers have three components: the axial, the radial and the
+    circumferential one. The fiber angle varies linearly in the transmural
+    coordinate of the ellipsoid itself (see
+    `cardiac_geometries.fibers.lv_ellipsoid.transmural_coordinate`), as a
+    planar Laplace problem on the meridian is not the axisymmetric one.
+
+    Parameters
+    ----------
+    outdir : Optional[Path], optional
+        Directory where to save the results.
+    r_short_endo : float, optional
+        Shortest radius on the endocardium layer, by default 7.0
+    r_short_epi : float, optional
+       Shortest radius on the epicardium layer, by default 10.0
+    r_long_endo : float, optional
+        Longest radius on the endocardium layer, by default 17.0
+    r_long_epi : float, optional
+        Longest radius on the epicardium layer, by default 20.0
+    psize_ref : float, optional
+        The reference point size (smaller values yield as finer mesh, by default 3
+    mu_apex_endo : float, optional
+        Angle for the endocardial apex, by default math.pi
+    mu_base_endo : float, optional
+        Angle for the endocardial base, by default math.acos(5 / 17)
+    mu_apex_epi : float, optional
+        Angle for the epicardial apex, by default math.pi
+    mu_base_epi : float, optional
+        Angle for the epicardial base, by default math.acos(5 / 20)
+    create_fibers : bool, optional
+        If True create analytic fibers, by default False
+    fiber_angle_endo : float, optional
+        Angle for the endocardium, by default 60
+    fiber_angle_epi : float, optional
+        Angle for the epicardium, by default -60
+    fiber_space : str, optional
+        Function space for fibers of the form family_degree, by default "P_1"
+    verbose : bool, optional
+        If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
+    comm : MPI.Comm, optional
+        MPI communicator, by default MPI.COMM_WORLD
+    ghost_mode : dolfinx.mesh.GhostMode, optional
+        Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+
+    Returns
+    -------
+    cardiac_geometries.geometry.Geometry
+        A Geometry with the mesh, markers, markers functions and fibers.
+
+    """
+
+    for name, mu in [
+        ("mu_apex_endo", mu_apex_endo),
+        ("mu_base_endo", mu_base_endo),
+        ("mu_apex_epi", mu_apex_epi),
+        ("mu_base_epi", mu_base_epi),
+    ]:
+        if not 0.0 <= mu <= math.pi:
+            raise ValueError(
+                f"{name} = {mu} is not in [0, pi], so the meridian would not be at y >= 0"
+            )
+
+    outdir = Path(outdir)
+    mesh_name = outdir / "lv_ellipsoid_2D.msh"
+    info = {
+        "r_short_endo": r_short_endo,
+        "r_short_epi": r_short_epi,
+        "r_long_endo": r_long_endo,
+        "r_long_epi": r_long_epi,
+        "psize_ref": psize_ref,
+        "mu_apex_endo": mu_apex_endo,
+        "mu_base_endo": mu_base_endo,
+        "mu_apex_epi": mu_apex_epi,
+        "mu_base_epi": mu_base_epi,
+        "create_fibers": create_fibers,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "fiber_space": fiber_space,
+        "mesh_type": "lv_ellipsoid_2D",
+        "order": order,
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "ghost_mode": ghost_mode.name,
+    }
+    if comm.rank == 0:
+        outdir.mkdir(exist_ok=True, parents=True)
+
+        with open(outdir / "info.json", "w") as f:
+            json.dump(
+                info,
+                f,
+                indent=2,
+                default=utils.json_serial,
+            )
+
+        cgc.lv_ellipsoid_2D(
+            mesh_name=mesh_name.as_posix(),
+            r_short_endo=r_short_endo,
+            r_short_epi=r_short_epi,
+            r_long_endo=r_long_endo,
+            r_long_epi=r_long_epi,
+            mu_base_endo=mu_base_endo,
+            mu_base_epi=mu_base_epi,
+            mu_apex_endo=mu_apex_endo,
+            mu_apex_epi=mu_apex_epi,
+            psize_ref=psize_ref,
+            verbose=verbose,
+            order=order,
+        )
+    comm.barrier()
+
+    geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode, gdim=2)
+
+    if comm.rank == 0:
+        with open(outdir / "markers.json", "w") as f:
+            json.dump(geometry.markers, f, default=utils.json_serial)
+
+    f0 = s0 = n0 = None
+    if create_fibers:
+        from .fibers.lv_ellipsoid import create_microstructure
+
+        system = create_microstructure(
+            mesh=geometry.mesh,
+            ffun=geometry.ffun,
+            markers=geometry.markers,
+            function_space=fiber_space,
+            r_short_endo=r_short_endo,
+            r_short_epi=r_short_epi,
+            r_long_endo=r_long_endo,
+            r_long_epi=r_long_epi,
+            alpha_endo=fiber_angle_endo,
+            alpha_epi=fiber_angle_epi,
+            outdir=outdir,
+            transmural="analytic",
+        )
+        f0, s0, n0 = system.f0, system.s0, system.n0
+
+    save_geometry(
+        path=outdir / "geometry.bp",
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        info=info,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        vfun=geometry.vfun,
+        f0=f0,
+        s0=s0,
+        n0=n0,
+    )
+    return Geometry(
+        mesh=geometry.mesh,
+        markers=geometry.markers,
+        cfun=geometry.cfun,
+        ffun=geometry.ffun,
+        vfun=geometry.vfun,
+        f0=f0,
+        s0=s0,
+        n0=n0,
+        info=info,
+    )
+
+
 def slab_dolfinx(
     comm,
     outdir: Path,
@@ -753,6 +1052,7 @@ def slab(
     fiber_space: str = "P_1",
     verbose: bool = False,
     use_dolfinx: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -782,6 +1082,9 @@ def slab(
         If True print information from gmsh, by default False
     use_dolfinx : bool, optional
         If True use dolfinx to create the mesh, by default False (gmsh)
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -793,6 +1096,8 @@ def slab(
         A Geometry with the mesh, markers, markers functions and fibers.
 
     """
+    if use_dolfinx and order != 1:
+        raise ValueError("Meshes of higher order are only supported with gmsh (use_dolfinx=False)")
 
     outdir = Path(outdir)
     mesh_name = outdir / "slab.msh"
@@ -806,6 +1111,7 @@ def slab(
         "fiber_angle_epi": fiber_angle_epi,
         "fiber_space": fiber_space,
         "mesh_type": "slab",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -829,6 +1135,7 @@ def slab(
                 lz=lz,
                 dx=dx,
                 verbose=verbose,
+                order=order,
             )
     comm.barrier()
 
@@ -902,6 +1209,7 @@ def slab_in_bath(
     bz: float = 0.1,
     dx: float = 0.001,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -927,6 +1235,9 @@ def slab_in_bath(
         Element size, by default 0.001
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -950,6 +1261,7 @@ def slab_in_bath(
         "bz": bz,
         "dx": dx,
         "mesh_type": "slab-bath",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -975,6 +1287,7 @@ def slab_in_bath(
             bz=bz,
             dx=dx,
             verbose=verbose,
+            order=order,
         )
 
     geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
@@ -1019,6 +1332,7 @@ def cylinder(
     fiber_space: str = "P_1",
     aha: bool = False,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1052,6 +1366,9 @@ def cylinder(
         If True create 17-segment AHA regions
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1079,6 +1396,7 @@ def cylinder(
         "fiber_space": fiber_space,
         "aha": aha,
         "mesh_type": "cylinder",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1103,6 +1421,7 @@ def cylinder(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
 
@@ -1168,6 +1487,7 @@ def cylinder_elliptical(
     fiber_space: str = "P_1",
     aha: bool = False,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> Geometry:
     """Create a cylindrical geometry
@@ -1200,6 +1520,9 @@ def cylinder_elliptical(
         If True create 17-segment AHA regions
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
 
@@ -1225,6 +1548,7 @@ def cylinder_elliptical(
         "fiber_space": fiber_space,
         "aha": aha,
         "mesh_type": "cylinder_elliptical",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
     }
@@ -1248,6 +1572,7 @@ def cylinder_elliptical(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            order=order,
         )
     comm.barrier()
 
@@ -1308,6 +1633,7 @@ def cylinder_racetrack(
     aha: bool = False,
     fillet_radius: float | None = None,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1348,6 +1674,9 @@ def cylinder_racetrack(
         By default None.
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1376,6 +1705,7 @@ def cylinder_racetrack(
         "aha": aha,
         "fillet_radius": fillet_radius,
         "mesh_type": "cylinder_racetrack",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1400,6 +1730,7 @@ def cylinder_racetrack(
             mesh_name=mesh_name.as_posix(),
             char_length=char_length,
             verbose=verbose,
+            order=order,
             mode="racetrack",
             fillet_radius=fillet_radius,
         )
@@ -1472,6 +1803,7 @@ def cylinder_D_shaped(
     aha: bool = False,
     fillet_radius: float | None = None,
     verbose: bool = False,
+    order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
 ) -> Geometry:
@@ -1516,6 +1848,9 @@ def cylinder_D_shaped(
         By default None.
     verbose : bool, optional
         If True print information from gmsh, by default False
+    order : int, optional
+        Order of the mesh elements. With order higher than one the elements
+        are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
@@ -1546,6 +1881,7 @@ def cylinder_D_shaped(
         "aha": aha,
         "fillet_radius": fillet_radius,
         "mesh_type": "cylinder_D_shaped",
+        "order": order,
         "cardiac_geometry_version": __version__,
         "timestamp": datetime.datetime.now().isoformat(),
         "ghost_mode": ghost_mode.name,
@@ -1573,6 +1909,7 @@ def cylinder_D_shaped(
                 mesh_name=mesh_name.as_posix(),
                 char_length=char_length,
                 verbose=verbose,
+                order=order,
             )
         else:
             cgc.cylinder_cut(
@@ -1586,6 +1923,7 @@ def cylinder_D_shaped(
                 mesh_name=mesh_name.as_posix(),
                 char_length=char_length,
                 verbose=verbose,
+                order=order,
                 mode="d_shaped",
                 fillet_radius=fillet_radius,
             )

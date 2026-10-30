@@ -130,6 +130,42 @@ def app():
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--geometry",
+    default="biv",
+    type=click.Choice(mesh.UKB_GEOMETRIES),
+    help=(
+        "Biventricular (biv) or LV only (lv) geometry, with open valves or with the "
+        "valves closed by caps and the cavities meshed (biv-closed, lv-closed)"
+    ),
+    show_default=True,
+)
+@click.option(
+    "--fiber-method",
+    default=None,
+    type=click.Choice(["doste", "ldrb"]),
+    help=(
+        "Rule-based method for the fibers: Doste et al. (2019), which handles the outflow "
+        "tracts, or Bayer et al. (2012). By default doste, or ldrb with --clipped"
+    ),
+)
+@click.option(
+    "--refine",
+    default=0,
+    type=int,
+    help=(
+        "Number of times to refine the surfaces of the atlas, placing the new nodes on "
+        "smooth surfaces through the nodes of the atlas"
+    ),
+    show_default=True,
+)
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def ukb(
     outdir: Path | str,
     mode: int = -1,
@@ -143,6 +179,10 @@ def ukb(
     clipped: bool = False,
     create_fibers: bool = True,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    geometry: str = "biv",
+    fiber_method: str | None = None,
+    order: int = 1,
+    refine: int = 0,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -160,6 +200,10 @@ def ukb(
         clipped=clipped,
         create_fibers=create_fibers,
         ghost_mode=ghost_mode,
+        geometry=geometry,
+        fiber_method=fiber_method,
+        order=order,
+        refine=refine,
     )
 
 
@@ -291,6 +335,13 @@ def ukb(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def lv_ellipsoid(
     outdir: Path,
     r_short_endo: float = 7.0,
@@ -309,6 +360,7 @@ def lv_ellipsoid(
     aha: bool = False,
     dmu_factor: float = 1 / 4,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -331,6 +383,168 @@ def lv_ellipsoid(
         aha=aha,
         dmu_factor=dmu_factor,
         ghost_mode=ghost_mode,
+        order=order,
+    )
+
+
+@click.command(help="Create the meridian of an LV ellipsoid, for axisymmetric problems")
+@click.argument(
+    "outdir",
+    required=True,
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+)
+@click.option(
+    "--r-short-endo",
+    default=7.0,
+    type=float,
+    help="Shortest radius on the endocardium layer",
+    show_default=True,
+)
+@click.option(
+    "--r-short-epi",
+    default=10.0,
+    type=float,
+    help="Shortest radius on the epicardium layer",
+    show_default=True,
+)
+@click.option(
+    "--r-long-endo",
+    default=17.0,
+    type=float,
+    help="Longest radius on the endocardium layer",
+    show_default=True,
+)
+@click.option(
+    "--r-long-epi",
+    default=20.0,
+    type=float,
+    help="Longest radius on the epicardium layer",
+    show_default=True,
+)
+@click.option(
+    "--psize-ref",
+    default=3.0,
+    type=float,
+    help="The reference point size (smaller values yield as finer mesh",
+    show_default=True,
+)
+@click.option(
+    "--mu-apex-endo",
+    default=math.pi,
+    type=float,
+    help="Angle for the endocardial apex",
+    show_default=True,
+)
+@click.option(
+    "--mu-base-endo",
+    default=math.acos(5 / 17),
+    type=float,
+    help="Angle for the endocardial base",
+    show_default=True,
+)
+@click.option(
+    "--mu-apex-epi",
+    default=math.pi,
+    type=float,
+    help="Angle for the epicardial apex",
+    show_default=True,
+)
+@click.option(
+    "--mu-base-epi",
+    default=math.acos(5 / 20),
+    type=float,
+    help="Angle for the epicardial base",
+    show_default=True,
+)
+@click.option(
+    "--create-fibers",
+    default=False,
+    is_flag=True,
+    help="If True create analytic fibers",
+    show_default=True,
+)
+@click.option(
+    "--fiber-angle-endo",
+    default=-60,
+    type=float,
+    help="Angle for the endocardium",
+    show_default=True,
+)
+@click.option(
+    "--fiber-angle-epi",
+    default=+60,
+    type=float,
+    help="Angle for the epicardium",
+    show_default=True,
+)
+@click.option(
+    "--fiber-space",
+    default="P_1",
+    type=str,
+    help="Function space for fibers of the form family_degree",
+    show_default=True,
+)
+@click.option(
+    "--ghost-mode",
+    default=dolfinx.mesh.GhostMode.none,
+    type=click.Choice(
+        dolfinx.mesh.GhostMode,
+        case_sensitive=False,
+    ),
+    help="Ghost mode for the mesh",
+    show_default=True,
+)
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
+def lv_ellipsoid_2D(
+    outdir: Path,
+    r_short_endo: float = 7.0,
+    r_short_epi: float = 10.0,
+    r_long_endo: float = 17.0,
+    r_long_epi: float = 20.0,
+    psize_ref: float = 3,
+    mu_apex_endo: float = math.pi,
+    mu_base_endo: float = math.acos(5 / 17),
+    mu_apex_epi: float = math.pi,
+    mu_base_epi: float = math.acos(5 / 20),
+    create_fibers: bool = False,
+    fiber_angle_endo: float = -60,
+    fiber_angle_epi: float = +60,
+    fiber_space: str = "P_1",
+    ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
+):
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True)
+
+    mesh.lv_ellipsoid_2D(
+        outdir=outdir,
+        r_short_endo=r_short_endo,
+        r_short_epi=r_short_epi,
+        r_long_endo=r_long_endo,
+        r_long_epi=r_long_epi,
+        mu_base_endo=mu_base_endo,
+        mu_base_epi=mu_base_epi,
+        mu_apex_endo=mu_apex_endo,
+        mu_apex_epi=mu_apex_epi,
+        psize_ref=psize_ref,
+        create_fibers=create_fibers,
+        fiber_angle_endo=fiber_angle_endo,
+        fiber_angle_epi=fiber_angle_epi,
+        fiber_space=fiber_space,
+        ghost_mode=ghost_mode,
+        order=order,
     )
 
 
@@ -475,6 +689,13 @@ def lv_ellipsoid(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def biv_ellipsoid(
     outdir: Path,
     char_length: float = 0.4,  # cm
@@ -495,6 +716,7 @@ def biv_ellipsoid(
     fiber_space: str = "P_1",
     verbose: bool = False,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     init_logging(verbose=verbose)
     outdir = Path(outdir)
@@ -520,6 +742,7 @@ def biv_ellipsoid(
         fiber_space=fiber_space,
         verbose=verbose,
         ghost_mode=ghost_mode,
+        order=order,
     )
 
 
@@ -601,6 +824,13 @@ def biv_ellipsoid(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def slab(
     outdir: Path,
     lx: float = 20.0,
@@ -612,6 +842,7 @@ def slab(
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -627,6 +858,7 @@ def slab(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
+        order=order,
     )
 
 
@@ -701,6 +933,13 @@ def slab(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def slab_in_bath(
     outdir: Path,
     lx: float = 1.0,
@@ -711,6 +950,7 @@ def slab_in_bath(
     bz: float = 0.1,
     dx: float = 0.01,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -725,6 +965,7 @@ def slab_in_bath(
         bz=bz,
         dx=dx,
         ghost_mode=ghost_mode,
+        order=order,
     )
 
 
@@ -820,6 +1061,13 @@ def slab_in_bath(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def cylinder(
     outdir: Path,
     char_length: float = 5.0,
@@ -833,6 +1081,7 @@ def cylinder(
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -850,6 +1099,7 @@ def cylinder(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
+        order=order,
     )
 
 
@@ -935,6 +1185,13 @@ def cylinder(
     help="Function space for fibers of the form family_degree",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def cylinder_elliptical(
     outdir: Path,
     char_length: float = 10.0,
@@ -947,6 +1204,7 @@ def cylinder_elliptical(
     fiber_angle_endo: float = -60,
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -963,6 +1221,7 @@ def cylinder_elliptical(
         fiber_angle_endo=fiber_angle_endo,
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
+        order=order,
     )
     geo.save(outdir / "cylinder.bp")
 
@@ -1066,6 +1325,13 @@ def cylinder_elliptical(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def cylinder_racetrack(
     outdir: Path,
     char_length: float = 10.0,
@@ -1080,6 +1346,7 @@ def cylinder_racetrack(
     fiber_space: str = "P_1",
     fillet_radius: float | None = None,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1098,6 +1365,7 @@ def cylinder_racetrack(
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
         fillet_radius=fillet_radius,
+        order=order,
     )
 
 
@@ -1214,6 +1482,13 @@ def cylinder_racetrack(
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@click.option(
+    "--order",
+    default=1,
+    type=int,
+    help="Order of the mesh elements",
+    show_default=True,
+)
 def cylinder_D_shaped(
     outdir: Path,
     char_length: float = 10.0,
@@ -1230,6 +1505,7 @@ def cylinder_D_shaped(
     fiber_space: str = "P_1",
     fillet_radius: float | None = None,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    order: int = 1,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1250,6 +1526,7 @@ def cylinder_D_shaped(
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
         fillet_radius=fillet_radius,
+        order=order,
     )
 
 
@@ -1338,6 +1615,7 @@ def rotate(
 
 
 app.add_command(lv_ellipsoid)
+app.add_command(lv_ellipsoid_2D)
 app.add_command(biv_ellipsoid)
 app.add_command(slab)
 app.add_command(slab_in_bath)

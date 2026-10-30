@@ -7,10 +7,13 @@ parts:
   - caption: Demo
     chapters:
     - file: demos/lv_ellipsoid.py
+    - file: demos/lv_ellipsoid_2D.py
     - file: demos/biv_ellipsoid.py
     - file: demos/slab.py
     - file: demos/cylinders.py
     - file: demos/ukb_atlas.py
+    - file: demos/higher_order.py
+    - file: demos/ukb_higher_order.py
     - file: demos/additional_data.py
     - file: docs/gui.md
 
