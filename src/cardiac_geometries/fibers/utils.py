@@ -89,10 +89,11 @@ def laplace(
     a = ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
     L = v * dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0)) * ufl.dx
 
+    fdim = mesh.topology.dim - 1
     endo_facets = ffun.find(endo_marker)
-    endo_dofs = dolfinx.fem.locate_dofs_topological(V, 2, endo_facets)
+    endo_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, endo_facets)
     epi_facets = ffun.find(epi_marker)
-    epi_dofs = dolfinx.fem.locate_dofs_topological(V, 2, epi_facets)
+    epi_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, epi_facets)
     zero = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
     one = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1.0))
 

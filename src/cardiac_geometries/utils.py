@@ -155,6 +155,17 @@ class GMshGeometry(NamedTuple):
     markers: dict[str, tuple[int, int]]
 
 
+def tag_dimensions(tdim: int) -> list[tuple[str, str, int]]:
+    """The tags of a mesh of topological dimension `tdim` and the dimension of
+    their entities. A mesh of dimension 2 has no edge tags: its edges are its
+    facets."""
+    tags = [("cfun", "Cell tags", tdim), ("ffun", "Facet tags", tdim - 1)]
+    if tdim == 3:
+        tags.append(("efun", "Edge tags", 1))
+    tags.append(("vfun", "Vertex tags", 0))
+    return tags
+
+
 def read_mesh(
     comm,
     filename: str | Path,
@@ -163,12 +174,7 @@ def read_mesh(
     tags = {}
     with dolfinx.io.XDMFFile(comm, filename, "r") as xdmf:
         mesh = xdmf.read_mesh(name="Mesh", ghost_mode=ghost_mode)
-        for var, name, dim in [
-            ("cfun", "Cell tags", mesh.topology.dim),
-            ("ffun", "Facet tags", mesh.topology.dim - 1),
-            ("efun", "Edge tags", mesh.topology.dim - 2),
-            ("vfun", "Vertex tags", mesh.topology.dim - 3),
-        ]:
+        for var, name, dim in tag_dimensions(mesh.topology.dim):
             mesh.topology.create_connectivity(dim, mesh.topology.dim)
             try:
                 tags[var] = xdmf.read_meshtags(mesh, name=name)
@@ -185,6 +191,7 @@ def gmsh2dolfin(
     msh_file,
     rank: int = 0,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    gdim: int = 3,
 ) -> GMshGeometry:
     logger.debug(f"Convert file {msh_file} to dolfin")
     outdir = Path(msh_file).parent
@@ -196,7 +203,9 @@ def gmsh2dolfin(
         gmsh.initialize()
         gmsh.model.add("Mesh from file")
         gmsh.merge(str(msh_file))
-    mesh_data = fenicsx_compat.model_to_mesh(gmsh.model, comm, rank, ghost_mode=ghost_mode)
+    mesh_data = fenicsx_compat.model_to_mesh(
+        gmsh.model, comm, rank, gdim=gdim, ghost_mode=ghost_mode
+    )
     if comm.rank == rank:
         gmsh.finalize()
 
@@ -216,20 +225,27 @@ def gmsh2dolfin(
         )
 
     if hasattr(mesh_data, "edge_tags"):
-        et = mesh_data.edge_tags  # type: ignore[attr-defined]
+        ridge_tags = mesh_data.edge_tags  # type: ignore[attr-defined]
     else:
-        et = mesh_data.ridge_tags
-    if et is None:
-        et = dolfinx.mesh.meshtags(
-            mesh, tdim - 2, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
-        )
+        ridge_tags = mesh_data.ridge_tags
     if hasattr(mesh_data, "vertex_tags"):
-        vt = mesh_data.vertex_tags  # type: ignore[attr-defined]
+        peak_tags = mesh_data.vertex_tags  # type: ignore[attr-defined]
     else:
-        vt = mesh_data.peak_tags
+        peak_tags = mesh_data.peak_tags
+
+    # The ridges are the edges of a 3D mesh but the vertices of a 2D one
+    et: dolfinx.mesh.MeshTags | None
+    if tdim == 3:
+        et, vt = ridge_tags, peak_tags
+        if et is None:
+            et = dolfinx.mesh.meshtags(
+                mesh, 1, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+            )
+    else:
+        et, vt = None, ridge_tags
     if vt is None:
         vt = dolfinx.mesh.meshtags(
-            mesh, tdim - 3, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
+            mesh, 0, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int32)
         )
 
     markers = {k: (v[1], v[0]) for k, v in markers_.items()}
@@ -237,7 +253,8 @@ def gmsh2dolfin(
     mesh.name = "Mesh"
     ct.name = "Cell tags"
     ft.name = "Facet tags"
-    et.name = "Edge tags"
+    if et is not None:
+        et.name = "Edge tags"
     vt.name = "Vertex tags"
 
     save_mesh_to_xdmf(comm, outdir / "mesh.xdmf", mesh, ct, ft, et, vt)
@@ -335,6 +352,7 @@ def save_mesh_to_xdmf(
         # XDMF cannot represent cells of higher order, but they are saved to geometry.bp
         logger.info(f"Skip saving {fname}: XDMF only supports meshes of order at most 2")
         return
+    tdim = mesh.topology.dim
     # Save tags to xdmf
     with dolfinx.io.XDMFFile(comm, fname, "w") as xdmf:
         xdmf.write_mesh(mesh)
@@ -345,21 +363,21 @@ def save_mesh_to_xdmf(
                 geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
             )
         if ft is not None:
-            mesh.topology.create_connectivity(2, 3)
+            mesh.topology.create_connectivity(ft.dim, tdim)
             xdmf.write_meshtags(
                 ft,
                 mesh.geometry,
                 geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
             )
         if et is not None:
-            mesh.topology.create_connectivity(1, 3)
+            mesh.topology.create_connectivity(et.dim, tdim)
             xdmf.write_meshtags(
                 et,
                 mesh.geometry,
                 geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry",
             )
         if vt is not None:
-            mesh.topology.create_connectivity(0, 3)
+            mesh.topology.create_connectivity(vt.dim, tdim)
             xdmf.write_meshtags(
                 vt,
                 mesh.geometry,
