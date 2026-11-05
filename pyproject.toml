@@ -50,7 +50,10 @@ docs = [
     "jupyter-book<2.0",
     "jupytext",
     "jupyter",
-    "pyvista[all]>=0.45.0",
+    # pyvista >= 0.49 with trame-pyvista >= 0.3 (and anywidget) embeds the vtk.js viewer
+    # once per page instead of once per plot, which keeps the size of the docs down
+    "pyvista[all]>=0.49.0",
+    "trame-pyvista[jupyter]>=0.3.0",
     "vtk>=9.5.0",
     "trame-vuetify",
     "ipywidgets",

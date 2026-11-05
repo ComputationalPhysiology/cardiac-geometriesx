@@ -96,7 +96,7 @@ plotter = pyvista.Plotter(shape=(1, 2))
 for i, name in enumerate(["linear, 10 mm", "quadratic, 10 mm"]):
     plotter.subplot(0, i)
     plotter.add_text(name)
-    plotter.add_mesh(wall_surface(geos[name], subdivision=4), color="lightcoral")
+    plotter.add_mesh(wall_surface(geos[name], subdivision=2), color="lightcoral")
     plotter.view_xy()
 plotter.link_views()
 if not pyvista.OFF_SCREEN:
@@ -169,10 +169,13 @@ reference_grid = reference_surface(
 plotter = pyvista.Plotter(shape=(1, 3))
 for i, name in enumerate(geos):
     surface = wall_surface(geos[name], subdivision=3)
-    surface.compute_implicit_distance(reference_grid, inplace=True)
-    surface["distance (mm)"] = np.abs(surface["implicit_distance"])
-    distance = surface["distance (mm)"]
+    distance = np.abs(surface.compute_implicit_distance(reference_grid)["implicit_distance"])
     print(f"{name}: mean distance {distance.mean():.3f} mm, maximum {distance.max():.2f} mm")
+    # Plot a coarser subdivision of the surface, to keep the size of the docs down
+    surface = wall_surface(geos[name], subdivision=2)
+    surface["distance (mm)"] = np.abs(
+        surface.compute_implicit_distance(reference_grid)["implicit_distance"]
+    )
     plotter.subplot(0, i)
     plotter.add_text(name, font_size=10)
     plotter.add_mesh(
@@ -263,7 +266,7 @@ function_grid["f0"] = geo.f0.x.array.real.reshape((x.shape[0], 3))
 # Plot only some of the fibers, so that the plot is not too cluttered
 glyphs = function_grid.glyph(orient="f0", factor=4.0, tolerance=0.02)
 plotter = pyvista.Plotter()
-plotter.add_mesh(wall_surface(geo, subdivision=3), color="lightgrey", opacity=0.3)
+plotter.add_mesh(wall_surface(geo, subdivision=2), color="lightgrey", opacity=0.3)
 plotter.add_mesh(glyphs, show_scalar_bar=False)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:

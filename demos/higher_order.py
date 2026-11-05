@@ -132,7 +132,7 @@ function_grid["f0"] = geo.f0.x.array.real.reshape((geometry.shape[0], 3))
 glyphs = function_grid.glyph(orient="f0", factor=1.0)
 grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(geo.mesh))
 plotter = pyvista.Plotter()
-plotter.add_mesh(grid.extract_surface(nonlinear_subdivision=3), style="wireframe", color="r")
+plotter.add_mesh(grid.extract_surface(nonlinear_subdivision=2), style="wireframe", color="r")
 plotter.add_mesh(glyphs)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
@@ -154,7 +154,7 @@ biv = cardiac_geometries.geometry.Geometry.from_folder(comm=MPI.COMM_WORLD, fold
 
 grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(biv.mesh))
 plotter = pyvista.Plotter()
-plotter.add_mesh(grid.extract_surface(nonlinear_subdivision=4))
+plotter.add_mesh(grid.extract_surface(nonlinear_subdivision=2))
 if not pyvista.OFF_SCREEN:
     plotter.show()
 else:
