@@ -63,7 +63,9 @@ except ImportError:
     print("Pyvista is not installed")
 else:
     plotter = pyvista.Plotter()
-    N = 5  # Only show every 5th point to avoid clutter
+    # Only show every 60th point to avoid clutter (and keep the size of the docs down). The
+    # quadrature space has 24 points per cell, six times as many as the DG 1 space below
+    N = 60
     assert geo.f0 is not None
     points = geo.f0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
@@ -155,6 +157,7 @@ except ImportError:
     pass
 else:
     plotter = pyvista.Plotter()
+    N = 10  # Only show every 10th point to avoid clutter
     points = c0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
     c0_arr = c0.x.array.reshape((points.shape[0], 3))
@@ -187,6 +190,7 @@ except ImportError:
     pass
 else:
     plotter = pyvista.Plotter()
+    N = 10  # Only show every 10th point to avoid clutter
     points = l0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
     l0_arr = l0.x.array.reshape((points.shape[0], 3))
@@ -269,6 +273,7 @@ else:
     assert isinstance(loaded_c0, dolfinx.fem.Function)
 
     plotter = pyvista.Plotter()
+    N = 10  # Only show every 10th point to avoid clutter
     points = loaded_c0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
     c0_arr = loaded_c0.x.array.reshape((points.shape[0], 3))
@@ -292,6 +297,7 @@ else:
     assert isinstance(loaded_l0, dolfinx.fem.Function)
 
     plotter = pyvista.Plotter()
+    N = 10  # Only show every 10th point to avoid clutter
     points = loaded_l0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
     f0_arr = loaded_l0.x.array.reshape((points.shape[0], 3))
@@ -313,7 +319,9 @@ except ImportError:
     print("Pyvista is not installed")
 else:
     plotter = pyvista.Plotter()
-    N = 5  # Only show every 5th point to avoid clutter
+    # Only show every 60th point to avoid clutter (and keep the size of the docs down). The
+    # quadrature space has 24 points per cell, six times as many as the DG 1 space below
+    N = 60
     assert geo_loaded.f0 is not None
     points = geo_loaded.f0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
