@@ -15,6 +15,40 @@ from . import utils
 
 logger = logging.getLogger(__name__)
 
+#: io4dolfinx backends that support checkpointing (mesh, meshtags and functions),
+#: mapped to the file suffix used for the geometry file.
+IO_BACKEND_SUFFIXES: dict[str, str] = {"adios2": ".bp", "h5py": ".h5"}
+IO_BACKENDS: tuple[str, ...] = tuple(IO_BACKEND_SUFFIXES)
+DEFAULT_IO_BACKEND = "adios2"
+
+
+def check_io_backend(backend: str) -> str:
+    if backend not in IO_BACKEND_SUFFIXES:
+        raise ValueError(f"Unsupported io backend {backend!r}, expected one of {IO_BACKENDS}")
+    return backend
+
+
+def geometry_path(folder: str | Path, backend: str = DEFAULT_IO_BACKEND) -> Path:
+    """Path of the geometry file in `folder` written with `backend`,
+    i.e. ``geometry.bp`` for adios2 and ``geometry.h5`` for h5py."""
+    return Path(folder) / f"geometry{IO_BACKEND_SUFFIXES[check_io_backend(backend)]}"
+
+
+def infer_io_backend(path: str | Path) -> str:
+    """Infer the io4dolfinx backend from the suffix of `path`,
+    defaulting to adios2 for unknown suffixes."""
+    suffix = Path(path).suffix.lower()
+    if suffix in (".h5", ".hdf5"):
+        return "h5py"
+    return DEFAULT_IO_BACKEND
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
 
 def info_path(path: Path) -> Path:
     return path.parent / f"info_{path.stem}.json"
@@ -36,7 +70,9 @@ def save_additional_data(
     additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function],
     path: Path,
     mesh: dolfinx.mesh.Mesh,
+    backend: str | None = None,
 ) -> None:
+    backend = backend or infer_io_backend(path)
     additional_data_attributes: dict[str, dict[str, Any]] = {}
     for name, data in additional_data.items():
         if isinstance(data, dolfinx.mesh.MeshTags):
@@ -45,6 +81,7 @@ def save_additional_data(
                 mesh=mesh,
                 filename=path,
                 meshtag_name=name,
+                backend=backend,
             )
             additional_data_attributes[name] = {"type": "MeshTags"}
         elif isinstance(data, dolfinx.fem.Function):
@@ -52,6 +89,7 @@ def save_additional_data(
                 u=data,
                 filename=path,
                 name=name,
+                backend=backend,
             )
             additional_data_attributes[name] = {
                 "type": "Function",
@@ -72,7 +110,9 @@ def save_additional_data(
 def load_additional_data(
     path: Path,
     mesh: dolfinx.mesh.Mesh,
+    backend: str | None = None,
 ) -> dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function]:
+    backend = backend or infer_io_backend(path)
     additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function] = {}
     if not additional_data_path(path).exists():
         return additional_data
@@ -85,12 +125,14 @@ def load_additional_data(
 
     for name, attr in additional_data_attributes.items():
         if attr["type"] == "MeshTags":
-            mt = io4dolfinx.read_meshtags(mesh=mesh, meshtag_name=name, filename=path)
+            mt = io4dolfinx.read_meshtags(
+                mesh=mesh, meshtag_name=name, filename=path, backend=backend
+            )
             additional_data[name] = mt
         elif attr["type"] == "Function":
             V = utils.array2functionspace(mesh, tuple(attr["element"]))
             f = dolfinx.fem.Function(V, name=name)
-            io4dolfinx.read_function(u=f, filename=path, name=name)
+            io4dolfinx.read_function(u=f, filename=path, name=name, backend=backend)
             additional_data[name] = f
         else:
             logger.warning(
@@ -114,12 +156,25 @@ def save_geometry(
     s0: dolfinx.fem.Function | None = None,
     n0: dolfinx.fem.Function | None = None,
     additional_data: dict[str, dolfinx.mesh.MeshTags | dolfinx.fem.Function] | None = None,
+    backend: str | None = None,
 ) -> None:
-    path = Path(path)
+    """Save a geometry to `path` using io4dolfinx.
 
-    shutil.rmtree(path, ignore_errors=True)
+    `backend` is the io4dolfinx backend ("adios2" or "h5py"). If None it is
+    inferred from the suffix of `path` (``.h5``/``.hdf5`` gives h5py, otherwise adios2).
+    """
+    path = Path(path)
+    backend = check_io_backend(backend or infer_io_backend(path))
+
+    if mesh.comm.rank == 0:
+        _remove_path(path)
+        # The json files next to the geometry file are shared between the backends,
+        # so remove geometry files with the same stem written with other backends
+        for suffix in IO_BACKEND_SUFFIXES.values():
+            if suffix != path.suffix:
+                _remove_path(path.with_suffix(suffix))
     mesh.comm.barrier()
-    io4dolfinx.write_mesh(mesh=mesh, filename=path)
+    io4dolfinx.write_mesh(mesh=mesh, filename=path, backend=backend)
 
     if mesh.comm.rank == 0:
         if markers is not None:
@@ -133,6 +188,7 @@ def save_geometry(
             mesh=mesh,
             filename=path,
             meshtag_name="Cell tags",
+            backend=backend,
         )
     if ffun is not None:
         io4dolfinx.write_meshtags(
@@ -140,6 +196,7 @@ def save_geometry(
             mesh=mesh,
             filename=path,
             meshtag_name="Facet tags",
+            backend=backend,
         )
     if efun is not None:
         io4dolfinx.write_meshtags(
@@ -147,6 +204,7 @@ def save_geometry(
             mesh=mesh,
             filename=path,
             meshtag_name="Edge tags",
+            backend=backend,
         )
     if vfun is not None:
         io4dolfinx.write_meshtags(
@@ -154,6 +212,7 @@ def save_geometry(
             mesh=mesh,
             filename=path,
             meshtag_name="Vertex tags",
+            backend=backend,
         )
 
     from .fibers.utils import save_microstructure
@@ -162,10 +221,11 @@ def save_geometry(
         mesh=mesh,
         functions=[f for f in (f0, s0, n0) if f is not None],
         path=path,
+        backend=backend,
     )
 
     if additional_data is not None:
-        save_additional_data(additional_data, path, mesh=mesh)
+        save_additional_data(additional_data, path, mesh=mesh, backend=backend)
     mesh.comm.barrier()
 
 
@@ -186,7 +246,7 @@ class Geometry:
     )
     quadrature_degree: int = 4
 
-    def save(self, path: str | Path) -> None:
+    def save(self, path: str | Path, backend: str | None = None) -> None:
         """Save the geometry to a file using io4dolfinx.
 
         Parameters
@@ -194,6 +254,9 @@ class Geometry:
         path : str | Path
             The path to the file where the geometry will be saved.
             The file will be created if it does not exist, or overwritten if it does.
+        backend : str | None, optional
+            The io4dolfinx backend, "adios2" or "h5py". By default it is inferred
+            from the suffix of `path` (``.h5`` gives h5py, otherwise adios2).
         """
         path = Path(path)
         save_geometry(
@@ -208,9 +271,10 @@ class Geometry:
             s0=self.s0,
             n0=self.n0,
             additional_data=self.additional_data,
+            backend=backend,
         )
 
-    def save_folder(self, folder: str | Path) -> None:
+    def save_folder(self, folder: str | Path, backend: str = DEFAULT_IO_BACKEND) -> None:
         """Save the geometry to a folder containing mesh and markers files.
 
         Parameters
@@ -218,6 +282,9 @@ class Geometry:
         folder : str | Path
             The path to the folder where the geometry will be saved.
             The folder will be created if it does not exist.
+        backend : str, optional
+            The io4dolfinx backend used for the geometry file, "adios2" (written to
+            ``geometry.bp``) or "h5py" (written to ``geometry.h5``), by default "adios2".
         """
         comm = self.mesh.comm
         folder = Path(folder)
@@ -238,7 +305,7 @@ class Geometry:
             (folder / "info.json").write_text(json.dumps(self.info, indent=4))
 
         save_geometry(
-            path=folder / "geometry.bp",
+            path=geometry_path(folder, backend),
             mesh=self.mesh,
             markers=self.markers,
             cfun=self.cfun,
@@ -249,6 +316,7 @@ class Geometry:
             s0=self.s0,
             n0=self.n0,
             additional_data=self.additional_data,
+            backend=backend,
         )
         logger.info(f"Geometry saved to {folder}")
 
@@ -396,6 +464,7 @@ class Geometry:
         comm: MPI.Comm,
         path: str | Path,
         ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+        backend: str | None = None,
     ) -> "Geometry":
         """Read geometry from a file using io4dolfinx.
 
@@ -410,6 +479,9 @@ class Geometry:
             dolfinx.mesh.GhostMode.none.
             Note that if you need to refine the mesh later, you should
             use dolfinx.mesh.GhostMode.none.
+        backend : str | None, optional
+            The io4dolfinx backend, "adios2" or "h5py". By default it is inferred
+            from the suffix of `path` (``.h5`` gives h5py, otherwise adios2).
 
         Returns
         -------
@@ -419,6 +491,7 @@ class Geometry:
         path = Path(path)
         if not path.exists():
             raise ValueError(f"File {path} does not exist")
+        backend = check_io_backend(backend or infer_io_backend(path))
 
         if markers_path(path).exists():
             if comm.rank == 0:
@@ -442,6 +515,7 @@ class Geometry:
             comm=comm,
             filename=path,
             ghost_mode=ghost_mode,
+            backend=backend,
         )
 
         # markers = io4dolfinx.read_attributes(comm=comm, filename=path, name="markers")
@@ -454,7 +528,7 @@ class Geometry:
         ):
             try:
                 tags[name] = io4dolfinx.read_meshtags(
-                    mesh=mesh, meshtag_name=meshtag_name, filename=path
+                    mesh=mesh, meshtag_name=meshtag_name, filename=path, backend=backend
                 )
             except (KeyError, IndexError):
                 logger.debug(f"{name} not found in {path}")
@@ -479,13 +553,13 @@ class Geometry:
             V = utils.array2functionspace(mesh, tuple(el))
             f = dolfinx.fem.Function(V, name=name)
             try:
-                io4dolfinx.read_function(u=f, filename=path, name=name)
+                io4dolfinx.read_function(u=f, filename=path, name=name, backend=backend)
             except KeyError:
                 continue
             else:
                 functions[name] = f
 
-        additional_data = load_additional_data(path=path, mesh=mesh)
+        additional_data = load_additional_data(path=path, mesh=mesh, backend=backend)
 
         return cls(
             mesh=mesh,
@@ -537,12 +611,14 @@ class Geometry:
         if not folder.exists():
             raise ValueError(f"Folder {folder} does not exist")
 
-        if (folder / "geometry.bp").exists():
-            logger.debug("Reading geometry from geometry.bp")
-            return cls.from_file(comm=comm, path=folder / "geometry.bp", ghost_mode=ghost_mode)
+        for backend in IO_BACKENDS:
+            path = geometry_path(folder, backend)
+            if path.exists():
+                logger.debug(f"Reading geometry from {path.name}")
+                return cls.from_file(comm=comm, path=path, ghost_mode=ghost_mode, backend=backend)
 
         logger.warning(
-            "geometry.bp not found, reading mesh and microstructure separately. "
+            "geometry.bp/geometry.h5 not found, reading mesh and microstructure separately. "
             "This may lead to inconsistent dof numbering in the mesh and microstructure. "
             "Try deleting the folder and regenerating the mesh."
         )

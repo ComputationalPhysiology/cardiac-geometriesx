@@ -14,7 +14,7 @@ import numpy as np
 from structlog import get_logger
 
 from . import utils
-from .geometry import Geometry, save_geometry
+from .geometry import DEFAULT_IO_BACKEND, Geometry, geometry_path, save_geometry
 
 meta = metadata("cardiac-geometriesx")
 __version__ = meta["Version"]
@@ -140,6 +140,7 @@ def ukb(
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     geometry: str = "biv",
     fiber_method: str | None = None,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -198,6 +199,9 @@ def ukb(
         `fiber_angle_epi` are the angles in the LV, while the RV and outflow
         tracts get the angles from the paper. By default "doste", or "ldrb" for
         clipped meshes, which have no outflow tracts.
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -328,7 +332,7 @@ def ukb(
                 vtx.write(0.0)
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=gmsh_geometry.mesh,
         markers=gmsh_geometry.markers,
         info=info,
@@ -378,6 +382,7 @@ def biv_ellipsoid(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create BiV ellipsoidal geometry
 
@@ -418,6 +423,9 @@ def biv_ellipsoid(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -512,7 +520,7 @@ def biv_ellipsoid(
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         info=info,
         markers=geometry.markers,
@@ -560,6 +568,7 @@ def lv_ellipsoid(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create an LV ellipsoidal geometry
 
@@ -606,6 +615,9 @@ def lv_ellipsoid(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -740,7 +752,7 @@ def lv_ellipsoid(
     assert n0 is None or isinstance(n0, dolfinx.fem.Function)
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=markers,
         info=info,
@@ -785,6 +797,7 @@ def lv_ellipsoid_2D(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create the meridian of an LV ellipsoid, for axisymmetric problems
 
@@ -841,6 +854,9 @@ def lv_ellipsoid_2D(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -936,7 +952,7 @@ def lv_ellipsoid_2D(
         f0, s0, n0 = system.f0, system.s0, system.n0
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
@@ -968,6 +984,7 @@ def slab_dolfinx(
     lz: float = 3.0,
     dx: float = 1.0,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> utils.GMshGeometry:
     mesh = dolfinx.mesh.create_box(
         comm,
@@ -1021,7 +1038,7 @@ def slab_dolfinx(
         xdmf.write_meshtags(ft, mesh.geometry)
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=mesh,
         markers=markers,
         cfun=None,
@@ -1055,6 +1072,7 @@ def slab(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create slab geometry
 
@@ -1089,6 +1107,9 @@ def slab(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -1148,6 +1169,7 @@ def slab(
             lz=lz,
             dx=dx,
             ghost_mode=ghost_mode,
+            io_backend=io_backend,
         )
 
     else:
@@ -1174,7 +1196,7 @@ def slab(
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
@@ -1212,6 +1234,7 @@ def slab_in_bath(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create slab geometry
 
@@ -1242,6 +1265,9 @@ def slab_in_bath(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -1298,7 +1324,7 @@ def slab_in_bath(
     comm.barrier()
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
@@ -1335,6 +1361,7 @@ def cylinder(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create a cylindrical geometry
 
@@ -1373,6 +1400,9 @@ def cylinder(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -1447,7 +1477,7 @@ def cylinder(
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
@@ -1489,6 +1519,7 @@ def cylinder_elliptical(
     verbose: bool = False,
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create a cylindrical geometry
 
@@ -1525,6 +1556,9 @@ def cylinder_elliptical(
         are curved to follow the boundaries, by default 1
     comm : MPI.Comm, optional
         MPI communicator, by default MPI.COMM_WORLD
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -1601,7 +1635,7 @@ def cylinder_elliptical(
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
@@ -1636,6 +1670,7 @@ def cylinder_racetrack(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create a racetrack-shaped thick cylindrical shell mesh using GMSH.
 
@@ -1681,6 +1716,9 @@ def cylinder_racetrack(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -1760,7 +1798,7 @@ def cylinder_racetrack(
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
@@ -1806,6 +1844,7 @@ def cylinder_D_shaped(
     order: int = 1,
     comm: MPI.Comm = MPI.COMM_WORLD,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ) -> Geometry:
     """Create a D-shaped thick cylindrical shell mesh using GMSH.
 
@@ -1855,6 +1894,9 @@ def cylinder_D_shaped(
         MPI communicator, by default MPI.COMM_WORLD
     ghost_mode : dolfinx.mesh.GhostMode, optional
         Ghost mode for the dolfinx mesh, by default dolfinx.mesh.GhostMode.none
+    io_backend : str, optional
+        io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
+        or "h5py" (``geometry.h5``), by default "adios2"
 
     Returns
     -------
@@ -1953,7 +1995,7 @@ def cylinder_D_shaped(
         fibers = {"f0": system.f0, "s0": system.s0, "n0": system.n0}
 
     save_geometry(
-        path=outdir / "geometry.bp",
+        path=geometry_path(outdir, io_backend),
         mesh=geometry.mesh,
         markers=geometry.markers,
         info=info,
