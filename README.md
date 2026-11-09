@@ -20,6 +20,8 @@ or using the python API e.g
 geo = cardiac_geometries.mesh.lv_ellipsoid(outdir="lv-mesh", create_fibers=True, fiber_space="P_2")
 ```
 
+The geometry is saved with [`io4dolfinx`](https://github.com/jorgensd/io4dolfinx) to `geometry.bp` using the `adios2` backend. Pass `--io-backend h5py` (or `io_backend="h5py"` in the python API) to instead write `geometry.h5` using the `h5py` backend. `Geometry.from_folder` reads either file.
+
 ## Install
 
 To install the package you can use `pip`

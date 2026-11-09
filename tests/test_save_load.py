@@ -148,3 +148,62 @@ def test_load_from_folder_mesh_and_function(tmp_path):
     geo = cardiac_geometries.geometry.Geometry.from_folder(comm, folder)
     assert geo.mesh.topology.index_map(3).size_global == mesh.topology.index_map(3).size_global
     assert geo.f0 is not None
+
+
+@pytest.mark.parametrize(
+    "backend, suffix", [("adios2", ".bp"), ("h5py", ".h5")], ids=["adios2", "h5py"]
+)
+def test_save_load_backend(tmp_path, backend, suffix):
+    comm = MPI.COMM_WORLD
+    mesh = dolfinx.mesh.create_unit_cube(comm, 3, 3, 3)
+    mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
+    facet_tags = dolfinx.mesh.meshtags(
+        mesh,
+        mesh.topology.dim - 1,
+        np.array([0, 1, 2, 3], dtype=np.int32),
+        1,
+    )
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1, (3,)))
+    f0 = dolfinx.fem.Function(V, name="f0")
+    f0.interpolate(lambda x: x)
+    geo = cardiac_geometries.geometry.Geometry(
+        mesh=mesh, ffun=facet_tags, f0=f0, markers={"ENDO": (1, 2)}
+    )
+
+    folder = comm.bcast(tmp_path, root=0)
+    geo.save_folder(folder, backend=backend)
+    path = folder / f"geometry{suffix}"
+    assert path.exists()
+    assert cardiac_geometries.geometry.infer_io_backend(path) == backend
+
+    for geo2 in (
+        cardiac_geometries.geometry.Geometry.from_folder(comm, folder),
+        cardiac_geometries.geometry.Geometry.from_file(comm, path),
+    ):
+        assert (
+            geo2.mesh.topology.index_map(3).size_global
+            == geo.mesh.topology.index_map(3).size_global
+        )
+        assert geo2.ffun is not None
+        assert geo2.markers == {"ENDO": [1, 2]}
+        assert geo2.f0 is not None
+        integral = dolfinx.fem.assemble_scalar(dolfinx.fem.form(geo2.f0[0] * geo2.dx))
+        assert np.isclose(comm.allreduce(integral, op=MPI.SUM), 0.5)
+
+
+def test_save_removes_checkpoint_of_other_backend(tmp_path):
+    comm = MPI.COMM_WORLD
+    mesh = dolfinx.mesh.create_unit_cube(comm, 2, 2, 2)
+    geo = cardiac_geometries.geometry.Geometry(mesh=mesh)
+    folder = comm.bcast(tmp_path, root=0)
+
+    geo.save_folder(folder, backend="adios2")
+    assert (folder / "geometry.bp").exists()
+    geo.save_folder(folder, backend="h5py")
+    assert (folder / "geometry.h5").exists()
+    assert not (folder / "geometry.bp").exists()
+
+
+def test_invalid_backend(tmp_path):
+    with pytest.raises(ValueError, match="Unsupported io backend"):
+        cardiac_geometries.geometry.geometry_path(tmp_path, "xdmf")

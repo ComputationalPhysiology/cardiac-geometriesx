@@ -25,6 +25,7 @@ def save_microstructure(
     viz_path: Path | None = None,
     viz: bool = True,
     checkpoint: bool = True,
+    backend: str | None = None,
 ) -> None:
     if len(functions) == 0:
         return
@@ -60,15 +61,16 @@ def save_microstructure(
     # Save with proper function space
 
     if checkpoint:
-        from ..geometry import microstructure_path
+        from ..geometry import infer_io_backend, microstructure_path
 
+        backend = backend or infer_io_backend(path)
         attributes = {f.name: element2array(f.ufl_element()) for f in functions}
         if mesh.comm.rank == 0:
             microstructure_path(path).write_text(
                 json.dumps(attributes, indent=4, default=json_serial)
             )
         for name, u in zip(("f0", "s0", "n0"), functions):
-            io4dolfinx.write_function(u=u, filename=path, name=name)
+            io4dolfinx.write_function(u=u, filename=path, name=name, backend=backend)
 
 
 def normalize(u):

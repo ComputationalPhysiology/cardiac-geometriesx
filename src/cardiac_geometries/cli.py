@@ -9,6 +9,7 @@ import dolfinx
 import rich_click as click
 
 from . import mesh
+from .geometry import DEFAULT_IO_BACKEND, IO_BACKEND_SUFFIXES, IO_BACKENDS
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,17 @@ def init_logging(verbose: bool = False):
     logging.basicConfig(level=loglevel)
     for name in ["numba"]:
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+io_backend_option = click.option(
+    "--io-backend",
+    default=DEFAULT_IO_BACKEND,
+    type=click.Choice(IO_BACKENDS),
+    help=(
+        "io4dolfinx backend used to write the geometry, adios2 (geometry.bp) or h5py (geometry.h5)"
+    ),
+    show_default=True,
+)
 
 
 @click.group()
@@ -166,6 +178,7 @@ def app():
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def ukb(
     outdir: Path | str,
     mode: int = -1,
@@ -183,6 +196,7 @@ def ukb(
     fiber_method: str | None = None,
     order: int = 1,
     refine: int = 0,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -204,6 +218,7 @@ def ukb(
         fiber_method=fiber_method,
         order=order,
         refine=refine,
+        io_backend=io_backend,
     )
 
 
@@ -342,6 +357,7 @@ def ukb(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def lv_ellipsoid(
     outdir: Path,
     r_short_endo: float = 7.0,
@@ -361,6 +377,7 @@ def lv_ellipsoid(
     dmu_factor: float = 1 / 4,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -384,6 +401,7 @@ def lv_ellipsoid(
         dmu_factor=dmu_factor,
         ghost_mode=ghost_mode,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -507,6 +525,7 @@ def lv_ellipsoid(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def lv_ellipsoid_2D(
     outdir: Path,
     r_short_endo: float = 7.0,
@@ -524,6 +543,7 @@ def lv_ellipsoid_2D(
     fiber_space: str = "P_1",
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -545,6 +565,7 @@ def lv_ellipsoid_2D(
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -696,6 +717,7 @@ def lv_ellipsoid_2D(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def biv_ellipsoid(
     outdir: Path,
     char_length: float = 0.4,  # cm
@@ -717,6 +739,7 @@ def biv_ellipsoid(
     verbose: bool = False,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     init_logging(verbose=verbose)
     outdir = Path(outdir)
@@ -743,6 +766,7 @@ def biv_ellipsoid(
         verbose=verbose,
         ghost_mode=ghost_mode,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -831,6 +855,7 @@ def biv_ellipsoid(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def slab(
     outdir: Path,
     lx: float = 20.0,
@@ -843,6 +868,7 @@ def slab(
     fiber_space: str = "P_1",
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -859,6 +885,7 @@ def slab(
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -940,6 +967,7 @@ def slab(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def slab_in_bath(
     outdir: Path,
     lx: float = 1.0,
@@ -951,6 +979,7 @@ def slab_in_bath(
     dx: float = 0.01,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -966,6 +995,7 @@ def slab_in_bath(
         dx=dx,
         ghost_mode=ghost_mode,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -1068,6 +1098,7 @@ def slab_in_bath(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def cylinder(
     outdir: Path,
     char_length: float = 5.0,
@@ -1082,6 +1113,7 @@ def cylinder(
     fiber_space: str = "P_1",
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1100,6 +1132,7 @@ def cylinder(
         fiber_space=fiber_space,
         ghost_mode=ghost_mode,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -1192,6 +1225,7 @@ def cylinder(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def cylinder_elliptical(
     outdir: Path,
     char_length: float = 10.0,
@@ -1205,6 +1239,7 @@ def cylinder_elliptical(
     fiber_angle_epi: float = +60,
     fiber_space: str = "P_1",
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1222,8 +1257,9 @@ def cylinder_elliptical(
         fiber_angle_epi=fiber_angle_epi,
         fiber_space=fiber_space,
         order=order,
+        io_backend=io_backend,
     )
-    geo.save(outdir / "cylinder.bp")
+    geo.save(outdir / f"cylinder{IO_BACKEND_SUFFIXES[io_backend]}")
 
 
 @click.command(help="Create racetrack cylinder geometry")
@@ -1332,6 +1368,7 @@ def cylinder_elliptical(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def cylinder_racetrack(
     outdir: Path,
     char_length: float = 10.0,
@@ -1347,6 +1384,7 @@ def cylinder_racetrack(
     fillet_radius: float | None = None,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1366,6 +1404,7 @@ def cylinder_racetrack(
         ghost_mode=ghost_mode,
         fillet_radius=fillet_radius,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -1489,6 +1528,7 @@ def cylinder_racetrack(
     help="Order of the mesh elements",
     show_default=True,
 )
+@io_backend_option
 def cylinder_D_shaped(
     outdir: Path,
     char_length: float = 10.0,
@@ -1506,6 +1546,7 @@ def cylinder_D_shaped(
     fillet_radius: float | None = None,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
     order: int = 1,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -1527,6 +1568,7 @@ def cylinder_D_shaped(
         ghost_mode=ghost_mode,
         fillet_radius=fillet_radius,
         order=order,
+        io_backend=io_backend,
     )
 
 
@@ -1596,6 +1638,7 @@ def gui():
     help="Ghost mode for the mesh",
     show_default=True,
 )
+@io_backend_option
 def rotate(
     folder: Path,
     outdir: Path,
@@ -1603,6 +1646,7 @@ def rotate(
     base_marker: str = "BASE",
     verbose: bool = False,
     ghost_mode: dolfinx.mesh.GhostMode = dolfinx.mesh.GhostMode.none,
+    io_backend: str = DEFAULT_IO_BACKEND,
 ):
     from .geometry import Geometry
 
@@ -1611,7 +1655,7 @@ def rotate(
 
     geo = Geometry.from_folder(comm=comm, folder=folder, ghost_mode=ghost_mode)
     geo.rotate(target_normal=target_normal, base_marker=base_marker)
-    geo.save_folder(Path(outdir))
+    geo.save_folder(Path(outdir), backend=io_backend)
 
 
 app.add_command(lv_ellipsoid)

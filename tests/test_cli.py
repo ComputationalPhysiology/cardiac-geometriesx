@@ -66,6 +66,38 @@ def test_script(fiber_space, script, tmp_path: Path):
         assert geo.f0 is not None
 
 
+@pytest.mark.parametrize(
+    "script",
+    [cli.slab, cli.lv_ellipsoid, cli.cylinder_elliptical],
+    ids=["slab", "lv_ellipsoid", "cylinder_elliptical"],
+)
+@pytest.mark.parametrize(
+    "io_backend, suffix", [("adios2", ".bp"), ("h5py", ".h5")], ids=["adios2", "h5py"]
+)
+def test_script_io_backend(io_backend, suffix, script, tmp_path: Path):
+    runner = CliRunner()
+
+    comm = MPI.COMM_WORLD
+    path = comm.bcast(tmp_path, root=0)
+
+    args = [path.as_posix(), "--create-fibers", "--io-backend", io_backend]
+    res = runner.invoke(script, args)
+    assert res.exit_code == 0, res.output
+    assert (path / f"geometry{suffix}").exists()
+    other = {".bp": ".h5", ".h5": ".bp"}[suffix]
+    assert not (path / f"geometry{other}").exists()
+
+    geo = Geometry.from_folder(comm=comm, folder=path)
+    assert geo.mesh.geometry.dim == 3
+    assert geo.ffun is not None
+    assert geo.f0 is not None
+
+
+def test_script_invalid_io_backend(tmp_path: Path):
+    res = CliRunner().invoke(cli.slab, [tmp_path.as_posix(), "--io-backend", "xdmf"])
+    assert res.exit_code != 0
+
+
 @pytest.mark.skipif(not HAS_LDRB, reason="LDRB atlas is not installed")
 def test_biv_fibers(tmp_path: Path):
     runner = CliRunner()
@@ -361,9 +393,10 @@ def test_rotate(script, fiber_space, tmp_path: Path):
         "1.0",
         "0.0",
     ]
-    res = runner.invoke(cli.rotate, args_rot)
+    res = runner.invoke(cli.rotate, args_rot + ["--io-backend", "h5py"])
 
     assert res.exit_code == 0
+    assert (path_rotated / "geometry.h5").exists()
     geo_rotated = Geometry.from_folder(comm=comm, folder=path_rotated)
     assert geo_rotated.mesh.geometry.dim == 3
     if fiber_space is not None:
