@@ -307,6 +307,8 @@ def ukb(
     if aha:
         from .aha import biv_aha
 
+        if gmsh_geometry.ffun is None:
+            raise ValueError("AHA segments need the facet tags of the mesh")
         landmarks_file = outdir / f"landmarks_{case}.json"
         if not landmarks_file.exists():
             raise ValueError(

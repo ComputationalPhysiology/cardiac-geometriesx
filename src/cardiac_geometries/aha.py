@@ -364,7 +364,7 @@ def aha_segments(
     x = np.asarray(x, dtype=float).reshape(-1, 3)
     apex = np.asarray(apex, dtype=float)
     e_l = np.asarray(base_centre, dtype=float) - apex
-    length = np.linalg.norm(e_l)
+    length = float(np.linalg.norm(e_l))
     e_l /= length
     u = np.asarray(anterior_ref, dtype=float) - apex
     u -= (u @ e_l) * e_l
