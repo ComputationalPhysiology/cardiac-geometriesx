@@ -279,10 +279,56 @@ def _nearest(
             + np.sum(targets**2, axis=1)[None, :]
         )
         index[start : start + chunk] = np.argmin(d2, axis=1)
-        dist[start : start + chunk] = np.sqrt(
-            np.maximum(d2[np.arange(len(p)), index[start : start + chunk]], 0.0)
+        # The expanded form loses digits (identical points come out ~1e-5 apart): recompute the
+        # distance
+        dist[start : start + chunk] = np.linalg.norm(
+            p - targets[index[start : start + chunk]], axis=1
         )
     return dist, index
+
+
+def _crossings(s: np.ndarray, level: float) -> list[tuple[int, float]]:
+    """Segments (i, i + 1) of the closed polyline with heights `s` that the plane s = level cuts,
+    with the position t in [0, 1] along each.
+    """
+    sa, sb = s, np.roll(s, -1)
+    out = []
+    for i in np.flatnonzero((sa - level) * (sb - level) <= 0.0):
+        if sa[i] != sb[i]:
+            out.append((int(i), float((level - sa[i]) / (sb[i] - sa[i]))))
+    return out
+
+
+def _follow_branch(
+    insertion: np.ndarray, s: np.ndarray, e_l: np.ndarray, segment: int, t: float, steepness: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Follow the insertion loop from the cut (segment, t) upwards and downwards for as long as it
+    rises (or falls) more steeply than `steepness` (the cosine of the largest angle to the long
+    axis).
+
+    Returns the heights and points of this section of the branch, ordered by height.
+    """
+    n = len(insertion)
+    cut = insertion[segment] + t * (insertion[(segment + 1) % n] - insertion[segment])
+    s_cut = s[segment] + t * (s[(segment + 1) % n] - s[segment])
+    sections = []
+    for sign in (1.0, -1.0):  # upwards, then downwards
+        # Along the loop, the direction of the segment's end that lies higher (or lower)
+        forward = (s[(segment + 1) % n] - s[segment]) * sign > 0
+        node = (segment + 1) % n if forward else segment
+        step = 1 if forward else -1
+        prev, prev_s, points = cut, s_cut, []
+        for _ in range(n):
+            d = insertion[node] - prev
+            rise = (s[node] - prev_s) * sign
+            if rise <= 0 or abs(d @ e_l) < steepness * np.linalg.norm(d):
+                break
+            points.append((s[node], insertion[node]))
+            prev, prev_s = insertion[node], s[node]
+            node = (node + step) % n
+        sections.append(points)
+    ordered = sections[1][::-1] + [(s_cut, cut)] + sections[0]
+    return np.array([h for h, _ in ordered]), np.array([x for _, x in ordered])
 
 
 def _insertion_azimuths(
@@ -292,31 +338,36 @@ def _insertion_azimuths(
     length: float,
     azimuth: Any,
     anterior_ref: np.ndarray,
+    steepness: float = np.cos(np.pi / 4),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Azimuths of the anterior and inferior insertion at ``NUM_LEVELS`` levels
-    along the long axis, where the short-axis planes cut the insertion loop."""
+    """Azimuths of the anterior and inferior insertion at ``NUM_LEVELS`` levels along the long axis.
+
+    The insertion loop of the template has two near-vertical branches, the anterior and the inferior
+    insertion, joined by runs across the top of the septum (below the base) and near the apex. The
+    branches are found from the two cuts of the level nearest mid-ventricle that cuts the loop
+    twice, and followed along the loop while they run within 45 degrees of the long axis. Above and
+    below that section each insertion keeps the azimuth of its end, so levels that cut the runs, or
+    nothing, are not misread.
+    """
     levels = (np.arange(NUM_LEVELS) + 0.5) / NUM_LEVELS
     s = (insertion - apex) @ e_l / length
-    a, b = insertion, np.roll(insertion, -1, axis=0)
-    sa, sb = s, np.roll(s, -1)
-    anterior = np.full(NUM_LEVELS, np.nan)
-    inferior = np.full(NUM_LEVELS, np.nan)
-    for i, level in enumerate(levels):
-        crossing = np.flatnonzero((sa - level) * (sb - level) <= 0.0)
-        crossing = crossing[sa[crossing] != sb[crossing]]
-        if len(crossing) != 2:
-            continue
-        t = (level - sa[crossing]) / (sb[crossing] - sa[crossing])
-        cuts = a[crossing] + t[:, None] * (b[crossing] - a[crossing])
-        first = np.argmin(np.linalg.norm(cuts - anterior_ref, axis=1))
-        anterior[i] = azimuth(cuts[first])
-        inferior[i] = azimuth(cuts[1 - first])
-    valid = np.flatnonzero(~np.isnan(anterior))
-    if len(valid) == 0:
+    candidates = sorted(levels, key=lambda level: abs(level - 0.5))
+    cuts = next((c for c in (_crossings(s, level) for level in candidates) if len(c) == 2), None)
+    if cuts is None:
         raise ValueError("No short-axis plane cuts the insertion loop twice")
-    # Levels without two cuts (e.g. near the apex) take those of the nearest level with two
-    fill = valid[np.argmin(np.abs(np.arange(NUM_LEVELS)[:, None] - valid[None, :]), axis=1)]
-    return levels, anterior[fill], inferior[fill]
+    branches = []
+    for segment, t in cuts:
+        heights, points = _follow_branch(insertion, s, e_l, segment, t, steepness)
+        angles = np.degrees(np.unwrap(np.radians([azimuth(p) for p in points])))
+        branches.append((heights, angles, points))
+    # The anterior insertion is the branch nearer the anterior reference (e.g. the pulmonary valve)
+    distance = [np.min(np.linalg.norm(points - anterior_ref, axis=1)) for _, _, points in branches]
+    first = int(np.argmin(distance))
+    out = []
+    for heights, angles, _ in (branches[first], branches[1 - first]):
+        # np.interp holds the end values outside the followed section
+        out.append(np.mod(np.interp(levels, heights, angles) + 180.0, 360.0) - 180.0)
+    return levels, out[0], out[1]
 
 
 def aha_segments(
@@ -463,8 +514,9 @@ def biv_aha(
     :func:`aha_segments`, with the names of :func:`lv_aha`), 18 for the RV free
     wall and 19 for the LV above the mitral plane (around the LV outflow tract).
     The septum belongs to the LV. A cell is in the RV free wall if its nearest RV
-    endocardial landmark node is on the free wall and it is nearer to that node
-    than to the LV endocardium.
+    endocardial landmark node is on the free wall (the insertion nodes, shared by
+    both surfaces, count as septum) and it is nearer to that node than to the LV
+    endocardium.
 
     Parameters
     ----------
@@ -494,6 +546,10 @@ def biv_aha(
 
     freewall = np.asarray(landmarks["rv_freewall"], dtype=float)
     septum = np.asarray(landmarks["rv_septum"], dtype=float)
+    # The insertion nodes belong to both surfaces; count them as septum, so a cell is in the free
+    # wall only if its nearest RV node lies on the free wall proper
+    on_septum, _ = _nearest(freewall, septum)
+    freewall = freewall[on_septum > 1e-9]
     rv_nodes = np.vstack([freewall, septum])
     d_rv, index = _nearest(x, rv_nodes)
     d_lv, _ = _nearest(x, _gather_facet_midpoints(mesh, ffun, _marker(markers, "LV_ENDO")))

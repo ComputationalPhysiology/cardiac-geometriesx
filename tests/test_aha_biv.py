@@ -92,6 +92,36 @@ def test_segments_analytic_mirror():
     assert np.array_equal(swapped, [MIRROR[v] for v in labels])
 
 
+# Like the UKB template: the insertion loop has two near-vertical branches and closes with runs
+# across the top of the septum (rising from z = 23 at the inferior branch to z = 26 at the anterior
+# one, below the base at z = 30) and near the apex (z = 3)
+_RUN = np.linspace(0.0, 1.0, 15)[1:-1]
+CLOSED_LOOP = np.vstack(
+    [
+        polar(12.5, THETA_A, np.linspace(3.0, 26.0, 12)),
+        polar(12.5, THETA_A + (THETA_I - THETA_A) * _RUN, 26.0 - 3.0 * _RUN),
+        polar(12.5, THETA_I, np.linspace(23.0, 3.0, 12)),
+        polar(12.5, THETA_I + (THETA_A - THETA_I) * _RUN, np.full(len(_RUN), 3.0)),
+    ]
+)
+
+
+@pytest.mark.parametrize("z", [24.5, 25.5, 27.0, 29.5])
+def test_segments_above_the_insertion_branches(z):
+    # Where short-axis planes cut the run across the top of the septum, or nothing, the insertions
+    # keep the azimuths of the branches below
+    x = polar(12.5, np.array([40.0, -20.0, 100.0, 280.0]), np.full(4, z))
+    labels = aha.aha_segments(x, APEX, BASE, CLOSED_LOOP, ANTERIOR_REF, septum_ref=SEPTUM_REF)
+    assert labels.tolist() == [2, 3, 1, 4]
+
+
+@pytest.mark.parametrize("z", [1.0, 2.5, 4.0])
+def test_segments_near_the_apical_run(z):
+    x = polar(12.5, np.array([10.0, 100.0, 280.0]), np.full(3, z))
+    labels = aha.aha_segments(x, APEX, BASE, CLOSED_LOOP, ANTERIOR_REF, septum_ref=SEPTUM_REF)
+    assert labels.tolist() == [14, 13, 15]
+
+
 def test_segments_shorter_arc_without_septum_ref():
     x = polar(12.5, np.array([40.0, 100.0]), np.array([15.0, 15.0]))
     labels = aha.aha_segments(x, APEX, BASE, INSERTION, ANTERIOR_REF)
@@ -214,6 +244,39 @@ def test_biv_aha_rv_free_wall(ukb_geo):
     assert not np.any((tags == 18) & (d_sep < 0.5 * d_fw))
     # The RV free wall is thin: its cells lie close to the RV free-wall nodes
     assert d_fw[tags == 18].max() < 10.0
+
+
+def test_biv_aha_basal_septum_does_not_collapse(ukb_geo):
+    # The insertion loop ends below the base: the basal septal segments (2, 3) must keep their share
+    # of the basal level up to the base, not shrink where the short-axis planes no longer cut the
+    # loop's branches
+    _, geo, _ = ukb_geo
+    x, tags = cell_data(geo)
+    x, tags = np.vstack(MPI.COMM_WORLD.allgather(x)), np.hstack(MPI.COMM_WORLD.allgather(tags))
+    s = lv_axis_s(geo, x)
+    basal = np.isin(tags, range(1, 7))
+    lower, upper = basal & (s < 5 / 6), basal & (s >= 5 / 6)
+    for seg in (2, 3):
+        share_lower = np.mean(tags[lower] == seg)
+        share_upper = np.mean(tags[upper] == seg)
+        assert share_upper > 0.5 * share_lower, (seg, share_lower, share_upper)
+
+
+def test_biv_aha_septum_is_lv(ukb_geo):
+    # Cells whose nearest RV endocardial node (insertion nodes excluded, as they belong to both
+    # surfaces) is on the septum are septal myocardium, and so LV, not RV
+    _, geo, landmarks = ukb_geo
+    x, tags = cell_data(geo)
+    septum = np.array(landmarks["rv_septum"])
+    freewall = np.array(landmarks["rv_freewall"])
+    insertion = np.array(landmarks["insertion"])
+    d_ins_fw, _ = nearest(freewall, insertion)
+    d_ins_sep, _ = nearest(septum, insertion)
+    fw_only, sep_only = freewall[d_ins_fw > 1e-9], septum[d_ins_sep > 1e-9]
+    d_fw, _ = nearest(x, fw_only)
+    d_sep, _ = nearest(x, sep_only)
+    septal = d_sep < d_fw
+    assert MPI.COMM_WORLD.allreduce(int(np.sum((tags == 18) & septal))) == 0
 
 
 def test_biv_aha_anterior_faces_pv(ukb_geo):
