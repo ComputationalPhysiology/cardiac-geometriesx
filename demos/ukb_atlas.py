@@ -225,3 +225,76 @@ geo_closed = cg.mesh.ukb(
     char_length_min=5.0,
 )
 print(geo_closed.markers)
+
+# ## AHA segments for the UKB BiV
+# With `aha=True` the cells are tagged with the 17 AHA segments of the LV (Cerqueira et al. 2002,
+# https://doi.org/10.1161/hc0402.102975), the RV free wall (`RV`) and the part of the LV above the
+# mitral plane (`LVOT`). The segments use anatomical landmarks that `ukb-atlas` writes next to the
+# surfaces (`landmarks_ED.json`): the RV insertion line, where the RV septum meets the RV free wall,
+# which every short-axis plane cuts at the anterior and the inferior insertion. The septum between
+# the insertions is split into two segments and the rest of the wall into four (basal and mid
+# levels), and the levels are thirds of the long axis from the apex to the mitral valve. This is
+# only supported for the open BiV geometry (`geometry="biv"`, not clipped)
+
+outdir_aha = Path("ukb_mesh_aha")
+geo_aha = cg.mesh.ukb(
+    outdir=outdir_aha,
+    comm=comm,
+    char_length_max=3.0,
+    char_length_min=3.0,
+    create_fibers=False,
+    aha=True,
+)
+print(geo_aha.markers)
+
+# Let us plot the LV segments (hiding the RV free wall, tag 18) from the RV side and from the
+# opposite side, together with the RV insertion line (in black)
+
+landmarks = json.loads((outdir_aha / "landmarks_ED.json").read_text())
+insertion = np.array(landmarks["insertion"])
+insertion_line = pyvista.lines_from_points(np.vstack([insertion, insertion[:1]]))
+
+vtk_mesh_aha = dolfinx.plot.vtk_mesh(geo_aha.mesh, geo_aha.mesh.topology.dim)
+grid_aha = pyvista.UnstructuredGrid(*vtk_mesh_aha)
+grid_aha.cell_data["AHA"] = geo_aha.cfun.values
+lv_aha = grid_aha.threshold([0.5, 17.5], scalars="AHA")
+# Number each segment at the cell centre nearest to the mean of its cell centres
+centres = lv_aha.cell_centers().points
+tags = np.asarray(lv_aha.cell_data["AHA"])
+segment_numbers = [str(i) for i in range(1, 18) if np.any(tags == i)]
+segment_centres = []
+for i in map(int, segment_numbers):
+    c = centres[tags == i]
+    segment_centres.append(c[np.argmin(np.linalg.norm(c - c.mean(axis=0), axis=1))])
+segment_centres = np.array(segment_centres)
+rv_centre = np.mean(landmarks["rv_freewall"], axis=0)
+lv_centre = np.array(lv_aha.center)
+plotter = pyvista.Plotter(shape=(1, 2), window_size=[1600, 800])
+for col, side in enumerate((1.0, -1.0)):
+    plotter.subplot(0, col)
+    plotter.add_mesh(
+        lv_aha, scalars="AHA", cmap="tab20", n_colors=17, clim=[0.5, 17.5], show_scalar_bar=False
+    )
+    plotter.add_mesh(insertion_line, color="black", line_width=6)
+    # Label the segments on the side facing the camera
+    facing = (segment_centres - lv_centre) @ (side * (rv_centre - lv_centre)) > 0
+    plotter.add_point_labels(
+        segment_centres[facing],
+        [n for n, f in zip(segment_numbers, facing) if f],
+        font_size=20,
+        shape_opacity=0.6,
+        always_visible=True,
+    )
+    plotter.camera_position = [
+        lv_centre + side * (rv_centre - lv_centre),
+        lv_centre,
+        np.array(landmarks["valves"]["MV"]) - lv_centre,
+    ]
+    plotter.reset_camera()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("aha_segments_ukb.png")
+
+# The same segments are also available from Python for any UKB BiV mesh, given the landmarks, with
+# `cardiac_geometries.aha.biv_aha`, and from the command line with `geo ukb --aha`
