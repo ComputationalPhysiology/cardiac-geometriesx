@@ -178,6 +178,14 @@ def app():
     help="Order of the mesh elements",
     show_default=True,
 )
+@click.option(
+    "--aha/--no-aha",
+    default=False,
+    is_flag=True,
+    type=bool,
+    help="If True tag the cells with the 17 AHA segments, the RV free wall and the LVOT",
+    show_default=True,
+)
 @io_backend_option
 def ukb(
     outdir: Path | str,
@@ -196,6 +204,7 @@ def ukb(
     fiber_method: str | None = None,
     order: int = 1,
     refine: int = 0,
+    aha: bool = False,
     io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
@@ -219,6 +228,7 @@ def ukb(
         order=order,
         refine=refine,
         io_backend=io_backend,
+        aha=aha,
     )
 
 

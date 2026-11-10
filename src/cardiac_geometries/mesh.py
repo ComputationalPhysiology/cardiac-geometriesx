@@ -141,6 +141,7 @@ def ukb(
     geometry: str = "biv",
     fiber_method: str | None = None,
     io_backend: str = DEFAULT_IO_BACKEND,
+    aha: bool = False,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -202,6 +203,11 @@ def ukb(
     io_backend : str, optional
         io4dolfinx backend used to write the geometry, "adios2" (``geometry.bp``)
         or "h5py" (``geometry.h5``), by default "adios2"
+    aha : bool, optional
+        If True, the cell tags are the 17 AHA segments of the LV, the RV free wall
+        ("RV") and the LV above the mitral plane ("LVOT"), see
+        :func:`cardiac_geometries.aha.biv_aha`. Only for the "biv" geometry (not
+        clipped), and it needs ukb-atlas >= 2.2 for the landmarks. By default False
 
     Returns
     -------
@@ -219,6 +225,8 @@ def ukb(
         raise ValueError(f"Unknown fiber method {fiber_method!r}, expected 'ldrb' or 'doste'")
     if clipped and fiber_method == "doste":
         raise ValueError("The 'doste' fiber method needs the outflow tracts, use 'ldrb'")
+    if aha and (geometry != "biv" or clipped):
+        raise ValueError("AHA segments are only supported for the 'biv' geometry (not clipped)")
 
     try:
         import ukb.cli
@@ -293,11 +301,28 @@ def ukb(
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,
         "ghost_mode": ghost_mode.name,
+        "aha": aha,
     }
-    if comm.rank == 0:
-        (outdir / "markers.json").write_text(
-            json.dumps(gmsh_geometry.markers, default=utils.json_serial)
+    cfun, markers = gmsh_geometry.cfun, gmsh_geometry.markers
+    if aha:
+        from .aha import biv_aha
+
+        landmarks_file = outdir / f"landmarks_{case}.json"
+        if not landmarks_file.exists():
+            raise ValueError(
+                f"AHA segments need the landmarks in {landmarks_file}, "
+                "written by ukb-atlas >= 2.2 (ukb-atlas surf)"
+            )
+        cfun, aha_markers = biv_aha(
+            gmsh_geometry.mesh,
+            gmsh_geometry.ffun,
+            gmsh_geometry.markers,
+            json.loads(landmarks_file.read_text()),
         )
+        # The AHA tags replace the cell tags
+        markers = {k: v for k, v in markers.items() if v[1] != 3} | aha_markers
+    if comm.rank == 0:
+        (outdir / "markers.json").write_text(json.dumps(markers, default=utils.json_serial))
         (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
 
     fibers = {}
@@ -334,9 +359,9 @@ def ukb(
     save_geometry(
         path=geometry_path(outdir, io_backend),
         mesh=gmsh_geometry.mesh,
-        markers=gmsh_geometry.markers,
+        markers=markers,
         info=info,
-        cfun=gmsh_geometry.cfun,
+        cfun=cfun,
         ffun=gmsh_geometry.ffun,
         efun=gmsh_geometry.efun,
         vfun=gmsh_geometry.vfun,
@@ -348,8 +373,8 @@ def ukb(
     # return geo
     return Geometry(
         mesh=gmsh_geometry.mesh,
-        markers=gmsh_geometry.markers,
-        cfun=gmsh_geometry.cfun,
+        markers=markers,
+        cfun=cfun,
         ffun=gmsh_geometry.ffun,
         efun=gmsh_geometry.efun,
         vfun=gmsh_geometry.vfun,
