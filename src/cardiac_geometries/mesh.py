@@ -33,10 +33,10 @@ def transform_markers(
         if "RV_SEPTUM" in markers:
             # The LV-only geometries are closed on the RV side by the RV septum
             epi.append(markers["RV_SEPTUM"][0])
-        if "BASE" in markers:
-            base = [markers["BASE"][0]]
-        else:
-            base = [markers[valve][0] for valve in ("MV", "AV", "TV", "PV") if valve in markers]
+        # The base is the basal cap (BASE, e.g. a patient mesh) and the valves, whichever exist:
+        # clipped UKB geometries have BASE only, the ones with outflow tracts the valves only
+        valves = [markers[valve][0] for valve in ("MV", "AV", "TV", "PV") if valve in markers]
+        base = ([markers["BASE"][0]] if "BASE" in markers else []) + valves
         transformed = {"lv": [markers["LV_ENDO"][0]], "epi": epi, "base": base}
         if "RV_ENDO" in markers:
             transformed["rv"] = [markers["RV_ENDO"][0]]
