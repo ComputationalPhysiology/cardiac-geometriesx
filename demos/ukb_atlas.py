@@ -298,3 +298,75 @@ else:
 
 # The same segments are also available from Python for any UKB BiV mesh, given the landmarks, with
 # `cardiac_geometries.aha.biv_aha`, and from the command line with `geo ukb --aha`
+
+# ## RV regions (Zhong et al. 2012)
+# With `rv_regions=True` (together with `aha=True`) the RV is also divided, into the 15 regions of
+# Zhong et al. (2012, https://doi.org/10.1152/ajpheart.00679.2011): five sectors in the basal and
+# mid levels (anterior, lateral and inferior free wall, inferoseptal and anteroseptal), three in the
+# apical level, and the RV outlet and inlet above the basal level (tags 18-32; the LVOT is 33). The
+# septum is split between the LV and the RV by a transventricular Laplace solution (0 on the RV
+# endocardium, 1 on the LV endocardium): a septal cell belongs to the RV where it is below
+# `rv_septum_fraction`, by default 0.5, the middle of the septum. The levels lie in short-axis
+# planes of the LV long axis, from the lowest point of the RV to the centre of the tricuspid valve,
+# and above it a cell belongs to the outlet or the inlet by its nearest valve
+
+outdir_rv = Path("ukb_mesh_rv_regions")
+geo_rv = cg.mesh.ukb(
+    outdir=outdir_rv,
+    comm=comm,
+    char_length_max=3.0,
+    char_length_min=3.0,
+    create_fibers=False,
+    aha=True,
+    rv_regions=True,
+)
+print({k: v for k, v in geo_rv.markers.items() if v[1] == 3})
+
+# Let us plot the RV regions (hiding the LV) from the RV free wall and from the LV side, where the
+# RV half of the septum (regions 21, 22, 26, 27 and 30) shows through the cut-away LV
+
+landmarks_rv = json.loads((outdir_rv / "landmarks_ED.json").read_text())
+vtk_mesh_rv = dolfinx.plot.vtk_mesh(geo_rv.mesh, geo_rv.mesh.topology.dim)
+grid_rv = pyvista.UnstructuredGrid(*vtk_mesh_rv)
+grid_rv.cell_data["Region"] = geo_rv.cfun.values
+rv_grid = grid_rv.threshold([17.5, 32.5], scalars="Region")
+rv_centres = rv_grid.cell_centers().points
+rv_tags = np.asarray(rv_grid.cell_data["Region"])
+rv_numbers = [str(i) for i in range(18, 33) if np.any(rv_tags == i)]
+rv_label_points = []
+for i in map(int, rv_numbers):
+    c = rv_centres[rv_tags == i]
+    rv_label_points.append(c[np.argmin(np.linalg.norm(c - c.mean(axis=0), axis=1))])
+rv_label_points = np.array(rv_label_points)
+rv_mid = np.mean(landmarks_rv["rv_freewall"], axis=0)
+lv_mid = np.array(grid_rv.threshold([0.5, 17.5], scalars="Region").center)
+plotter = pyvista.Plotter(shape=(1, 2), window_size=[1600, 800])
+for col, side in enumerate((1.0, -1.0)):
+    plotter.subplot(0, col)
+    plotter.add_mesh(
+        rv_grid, scalars="Region", cmap="tab20b", n_colors=15, clim=[17.5, 32.5],
+        show_scalar_bar=False,
+    )
+    # Label the free-wall regions in the view from the RV, the septal ones in the view from the LV
+    septal = np.isin(np.array(rv_numbers, dtype=int), [21, 22, 26, 27, 30])
+    facing = septal if side < 0 else ~septal
+    plotter.add_point_labels(
+        rv_label_points[facing],
+        [n for n, f in zip(rv_numbers, facing) if f],
+        font_size=20,
+        shape_opacity=0.6,
+        always_visible=True,
+    )
+    plotter.camera_position = [
+        lv_mid + side * 2.0 * (rv_mid - lv_mid),
+        lv_mid,
+        np.array(landmarks_rv["valves"]["MV"]) - lv_mid,
+    ]
+    plotter.reset_camera()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("rv_regions_ukb.png")
+
+# The same regions are available from Python with `cardiac_geometries.aha.biv_regions`, and from
+# the command line with `geo ukb --aha --rv-regions [--rv-septum-fraction 0.5]`

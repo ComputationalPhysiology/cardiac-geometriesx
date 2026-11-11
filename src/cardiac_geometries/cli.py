@@ -186,6 +186,26 @@ def app():
     help="If True tag the cells with the 17 AHA segments, the RV free wall and the LVOT",
     show_default=True,
 )
+@click.option(
+    "--rv-regions/--no-rv-regions",
+    default=False,
+    is_flag=True,
+    type=bool,
+    help=(
+        "With --aha, divide the RV into the 15 regions of Zhong et al. (2012) and split the "
+        "septum between the LV and the RV"
+    ),
+    show_default=True,
+)
+@click.option(
+    "--rv-septum-fraction",
+    default=None,
+    type=float,
+    help=(
+        "With --rv-regions, the share of the septal thickness (from the RV side) that belongs "
+        "to the RV, in [0, 1]  [default: 0.5]"
+    ),
+)
 @io_backend_option
 def ukb(
     outdir: Path | str,
@@ -205,6 +225,8 @@ def ukb(
     order: int = 1,
     refine: int = 0,
     aha: bool = False,
+    rv_regions: bool = False,
+    rv_septum_fraction: float | None = None,
     io_backend: str = DEFAULT_IO_BACKEND,
 ):
     outdir = Path(outdir)
@@ -229,6 +251,8 @@ def ukb(
         refine=refine,
         io_backend=io_backend,
         aha=aha,
+        rv_regions=rv_regions,
+        rv_septum_fraction=rv_septum_fraction,
     )
 
 

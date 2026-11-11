@@ -2,6 +2,7 @@ from typing import Any
 
 import dolfinx
 import numpy as np
+import ufl
 
 
 def focal(r_long_endo: float | np.ndarray, r_short_endo: float | np.ndarray) -> float | np.ndarray:
@@ -412,6 +413,41 @@ def aha_segments(
     np.ndarray
         The segment of each point (1-17, or 19 above the base)
     """
+    s, psi, width = _short_axis_frame(x, apex, base_centre, insertion, anterior_ref, septum_ref)
+
+    # Basal/mid sector index in the order anteroseptal, inferoseptal, inferior,
+    # inferolateral, anterolateral, anterior
+    free = (psi - width) / ((360.0 - width) / 4.0)
+    sector = np.where(
+        psi < width / 2, 0, np.where(psi < width, 1, 2 + np.clip(free.astype(int), 0, 3))
+    )
+    basal = np.array([2, 3, 4, 5, 6, 1])[sector]
+    # Apical: septal (14), inferior (15), lateral (16) and anterior (13), in 90 degree
+    # steps from the septum
+    apical_sector = np.mod(np.floor((psi - width / 2 + 45.0) / 90.0).astype(int), 4)
+    apical = np.array([14, 15, 16, 13])[apical_sector]
+
+    labels = np.where(s < 1 / 3, apical, np.where(s < 2 / 3, basal + 6, basal))
+    labels = np.where(s < 0, 17, labels)
+    labels = np.where(s > 1, LVOT_TAG, labels)
+    return labels.astype(np.int32)
+
+
+def _short_axis_frame(
+    x: np.ndarray,
+    apex: np.ndarray,
+    base_centre: np.ndarray,
+    insertion: np.ndarray,
+    anterior_ref: np.ndarray,
+    septum_ref: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Short-axis coordinates of points: (s, psi, width), each of shape (N,).
+
+    s is the normalized position along the long axis from ``apex`` to ``base_centre``; psi in
+    [0, 360) is the angle about the long axis from the anterior insertion, increasing towards the
+    septum; width is the angle of the septal arc (from the anterior to the inferior insertion) at
+    each point's level. See :func:`aha_segments` for the parameters.
+    """
     x = np.asarray(x, dtype=float).reshape(-1, 3)
     apex = np.asarray(apex, dtype=float)
     e_l = np.asarray(base_centre, dtype=float) - apex
@@ -447,23 +483,105 @@ def aha_segments(
         sign = np.where(arc <= 180.0, 1.0, -1.0)
     width = np.where(sign > 0, arc, 360.0 - arc)  # of the septum
     psi = np.mod(sign * (azimuth(x) - a), 360.0)
+    return s, psi, width
 
-    # Basal/mid sector index in the order anteroseptal, inferoseptal, inferior,
-    # inferolateral, anterolateral, anterior
-    free = (psi - width) / ((360.0 - width) / 4.0)
-    sector = np.where(
-        psi < width / 2, 0, np.where(psi < width, 1, 2 + np.clip(free.astype(int), 0, 3))
+
+# The 15 RV regions of Zhong et al. (2012), Appendix B, in their order; with RV regions, region k
+# has the cell tag RV_REGION_OFFSET + k (18-32, the numbering of Doste et al. 2019, Table A1)
+RV_REGION_NAMES = [
+    "RV-BASAL-ANTERIOR",
+    "RV-BASAL-LATERAL",
+    "RV-BASAL-INFERIOR",
+    "RV-BASAL-INFEROSEPTAL",
+    "RV-BASAL-ANTEROSEPTAL",
+    "RV-MID-ANTERIOR",
+    "RV-MID-LATERAL",
+    "RV-MID-INFERIOR",
+    "RV-MID-INFEROSEPTAL",
+    "RV-MID-ANTEROSEPTAL",
+    "RV-APICAL-ANTERIOR",
+    "RV-APICAL-INFERIOR",
+    "RV-APICAL-SEPTAL",
+    "RV-OUTLET",
+    "RV-INLET",
+]
+RV_REGION_OFFSET = 17
+LVOT_TAG_RV_REGIONS = 33
+
+
+def rv_segments(
+    x: np.ndarray,
+    septal: np.ndarray,
+    apex: np.ndarray,
+    base_centre: np.ndarray,
+    insertion: np.ndarray,
+    anterior_ref: np.ndarray,
+    septum_ref: np.ndarray | None,
+    s_min: float,
+    s_top: float,
+    pv_centre: np.ndarray,
+    tv_centre: np.ndarray,
+) -> np.ndarray:
+    """Label points of the RV wall with the 15 regions of Zhong et al. (2012), Appendix B.
+
+    The levels lie in short-axis planes of the LV long axis (``apex`` to ``base_centre``), as Zhong
+    et al. drew them on short-axis MRI slices. With s the normalized position along that axis and
+    r = (s - s_min) / (s_top - s_min), the RV body is apical for r < 1/3 (and below s_min), mid for
+    r < 2/3 and basal for r <= 1. Above it (r > 1) a point is in the RV outlet (14) if it is closer
+    to ``pv_centre`` than to ``tv_centre``, and in the RV inlet (15) otherwise.
+
+    The sectors start at the anterior insertion. With frac the position along the septal arc
+    between the insertions (0 at the anterior, 1 at the inferior insertion; points beyond the arc
+    take its nearer end), the free wall is split into anterior, lateral and inferior thirds in the
+    basal and mid levels, and anterior and inferior halves in the apical level; the septum
+    (``septal``) into anteroseptal and inferoseptal halves, and one apical septal region. Zhong et
+    al. give the ratio of free wall to septum (3:2, and 2:1 at the apex) but not where the levels
+    fall or how the outlet meets the inlet: s_top, the nearest-valve rule and the equal-angle
+    sectors are this implementation's choices.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Points to label, shape (N, 3)
+    septal : np.ndarray
+        True for points of the RV septum, shape (N,)
+    apex, base_centre, insertion, anterior_ref, septum_ref
+        As in :func:`aha_segments`
+    s_min : float
+        The lowest point of the RV, in units of s
+    s_top : float
+        The top of the basal level, in units of s (e.g. the centre of the tricuspid valve)
+    pv_centre : np.ndarray
+        The centre of the pulmonary valve
+    tv_centre : np.ndarray
+        The centre of the tricuspid valve
+
+    Returns
+    -------
+    np.ndarray
+        The tag of each point, RV_REGION_OFFSET + the region number (18-32)
+    """
+    x = np.asarray(x, dtype=float).reshape(-1, 3)
+    septal = np.asarray(septal, dtype=bool).reshape(-1)
+    s, psi, width = _short_axis_frame(x, apex, base_centre, insertion, anterior_ref, septum_ref)
+    r = (s - s_min) / (s_top - s_min)
+    frac = np.where(psi <= width, psi / width, np.where(psi - width < 360.0 - psi, 1.0, 0.0))
+
+    free_body = np.where(
+        frac < 1 / 3, 1, np.where(frac < 2 / 3, 2, 3)
+    )  # anterior, lateral, inferior
+    septal_body = np.where(frac < 1 / 2, 5, 4)  # anteroseptal, inferoseptal
+    body = np.where(septal, septal_body, free_body)  # basal numbering (1-5)
+    apical = np.where(septal, 13, np.where(frac < 1 / 2, 11, 12))
+    above = np.where(
+        np.linalg.norm(x - np.asarray(pv_centre, dtype=float), axis=1)
+        < np.linalg.norm(x - np.asarray(tv_centre, dtype=float), axis=1),
+        14,
+        15,
     )
-    basal = np.array([2, 3, 4, 5, 6, 1])[sector]
-    # Apical: septal (14), inferior (15), lateral (16) and anterior (13), in 90 degree
-    # steps from the septum
-    apical_sector = np.mod(np.floor((psi - width / 2 + 45.0) / 90.0).astype(int), 4)
-    apical = np.array([14, 15, 16, 13])[apical_sector]
-
-    labels = np.where(s < 1 / 3, apical, np.where(s < 2 / 3, basal + 6, basal))
-    labels = np.where(s < 0, 17, labels)
-    labels = np.where(s > 1, LVOT_TAG, labels)
-    return labels.astype(np.int32)
+    region = np.where(r < 1 / 3, apical, np.where(r < 2 / 3, body + 5, body))
+    region = np.where(r > 1, above, region)
+    return (RV_REGION_OFFSET + region).astype(np.int32)
 
 
 def _gather_facet_midpoints(
@@ -536,6 +654,22 @@ def biv_aha(
     tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]
         The cell tags and their markers
     """
+    c = _biv_cells(mesh, ffun, markers, landmarks)
+    rv = c["free_wall"]
+    values = np.full(len(c["cells"]), RV_TAG, dtype=np.int32)
+    values[~rv] = aha_segments(c["x"][~rv], *c["frame"])
+    tags = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, c["cells"], values)
+    return tags, aha_markers()
+
+
+def _biv_cells(
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    markers: dict[str, Any],
+    landmarks: dict[str, Any],
+) -> dict[str, Any]:
+    """The owned cells of a UKB BiV, their midpoints, the RV free-wall mask and the short-axis
+    frame arguments (apex, base centre, insertion, anterior and septal references)."""
     missing = [k for k in ("insertion", "rv_freewall", "rv_septum", "valves") if k not in landmarks]
     if missing:
         raise ValueError(f"Missing landmarks {missing}")
@@ -553,16 +687,141 @@ def biv_aha(
     rv_nodes = np.vstack([freewall, septum])
     d_rv, index = _nearest(x, rv_nodes)
     d_lv, _ = _nearest(x, _gather_facet_midpoints(mesh, ffun, _marker(markers, "LV_ENDO")))
-    rv = (index < len(freewall)) & (d_rv < d_lv)
-
-    values = np.full(ncells, RV_TAG, dtype=np.int32)
-    values[~rv] = aha_segments(
-        x[~rv],
+    frame = (
         apex,
         mv_centre,
         np.asarray(landmarks["insertion"], dtype=float),
         np.asarray(landmarks["valves"]["PV"], dtype=float),
-        septum_ref=septum.mean(axis=0),
+        septum.mean(axis=0),
     )
-    tags = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, cells, values)
-    return tags, aha_markers()
+    return {
+        "cells": cells,
+        "x": x,
+        "free_wall": (index < len(freewall)) & (d_rv < d_lv),
+        "frame": frame,
+        "rv_nodes": np.vstack([np.asarray(landmarks["rv_freewall"], dtype=float), septum]),
+    }
+
+
+def transventricular(
+    mesh: dolfinx.mesh.Mesh, ffun: dolfinx.mesh.MeshTags, markers: dict[str, Any]
+) -> dolfinx.fem.Function:
+    """The transventricular Laplace solution (P1): 0 on the RV endocardium (``RV_ENDO``), 1 on
+    the LV endocardium (``LV_ENDO``) and zero flux elsewhere. As in Doste et al. (2019) and the
+    first step of Cobiveco (Schuler et al. 2021), its 0.5 level runs through the middle of the
+    septum."""
+    from dolfinx.fem.petsc import LinearProblem
+
+    missing = [name for name in ("RV_ENDO", "LV_ENDO") if name not in markers]
+    if missing:
+        raise ValueError(f"Missing markers {missing}")
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1))
+    fdim = mesh.topology.dim - 1
+    mesh.topology.create_connectivity(fdim, mesh.topology.dim)
+    bcs = [
+        dolfinx.fem.dirichletbc(
+            dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(value)),
+            dolfinx.fem.locate_dofs_topological(V, fdim, ffun.find(_marker(markers, name))),
+            V,
+        )
+        for name, value in (("RV_ENDO", 0.0), ("LV_ENDO", 1.0))
+    ]
+    u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
+    zero = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
+    problem = LinearProblem(
+        ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx,
+        zero * v * ufl.dx,
+        bcs=bcs,
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        petsc_options_prefix="cardiac_geometriesx_transventricular",
+    )
+    uh = problem.solve()
+    assert isinstance(uh, dolfinx.fem.Function)
+    uh.x.scatter_forward()
+    return uh
+
+
+def biv_region_markers() -> dict[str, tuple[int, int]]:
+    """The names of the 17 AHA segments (1-17), the 15 RV regions of Zhong et al. (2012) (18-32)
+    and the LV above the base (33), as tagged by :func:`biv_regions`."""
+    markers = {k: v for k, v in aha_markers().items() if v[0] <= 17}
+    for k, name in enumerate(RV_REGION_NAMES, start=1):
+        markers[name] = (RV_REGION_OFFSET + k, 3)
+    markers["LVOT"] = (LVOT_TAG_RV_REGIONS, 3)
+    return markers
+
+
+def biv_regions(
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    markers: dict[str, Any],
+    landmarks: dict[str, Any],
+    rv_septum_fraction: float = 0.5,
+) -> tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]:
+    """AHA segments of the LV and the RV regions of Zhong et al. (2012) on a UKB BiV.
+
+    The RV free wall is found as in :func:`biv_aha`. The septum (the cells between the two
+    insertions, with 0 <= s <= 1, that are not RV free wall) is split by the transventricular
+    Laplace solution u (:func:`transventricular`): a septal cell belongs to the RV if u at its
+    midpoint is below ``rv_septum_fraction``. So 0 gives the whole septum to the LV (as
+    :func:`biv_aha`), 1 gives it all to the RV, and the default 0.5 splits it in the middle, as
+    Zhong et al. and Doste et al. (2019) do. RV cells get :func:`rv_segments` (tags 18-32), with
+    the RV body from its lowest landmark node to the centre of the tricuspid valve; LV cells get
+    :func:`aha_segments` (1-17), and the LV above the mitral plane is 33.
+
+    Parameters
+    ----------
+    mesh, ffun, markers, landmarks
+        As in :func:`biv_aha`; the markers also need ``RV_ENDO``
+    rv_septum_fraction : float
+        The share of the septal thickness, from the RV side, that belongs to the RV, in [0, 1]
+
+    Returns
+    -------
+    tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]
+        The cell tags and their markers (:func:`biv_region_markers`)
+    """
+    if not 0.0 <= rv_septum_fraction <= 1.0:
+        raise ValueError(f"rv_septum_fraction must be in [0, 1], got {rv_septum_fraction}")
+    c = _biv_cells(mesh, ffun, markers, landmarks)
+    x, free_wall, frame = c["x"], c["free_wall"], c["frame"]
+    s, psi, width = _short_axis_frame(x, *frame)
+    candidates = ~free_wall & (s >= 0.0) & (s <= 1.0) & (psi < width)
+    if rv_septum_fraction == 0.0:
+        rv_septum = np.zeros_like(candidates)
+    elif rv_septum_fraction == 1.0:
+        rv_septum = candidates
+    else:
+        u = transventricular(mesh, ffun, markers)
+        u0 = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("DG", 0)))
+        u0.interpolate(u)
+        rv_septum = candidates & (u0.x.array[: len(c["cells"])] < rv_septum_fraction)
+
+    apex, mv_centre = frame[0], frame[1]
+    e_l = mv_centre - apex
+    length = float(np.linalg.norm(e_l))
+    e_l = e_l / length
+    s_min = float(np.min((c["rv_nodes"] - apex) @ e_l) / length)
+    tv = np.asarray(landmarks["valves"]["TV"], dtype=float)
+    s_top = float((tv - apex) @ e_l / length)
+
+    rv = free_wall | rv_septum
+    values = np.empty(len(c["cells"]), dtype=np.int32)
+    _, _, insertion, anterior_ref, septum_ref = frame
+    values[rv] = rv_segments(
+        x[rv],
+        rv_septum[rv],
+        apex,
+        mv_centre,
+        insertion,
+        anterior_ref,
+        septum_ref,
+        s_min,
+        s_top,
+        np.asarray(landmarks["valves"]["PV"], dtype=float),
+        tv,
+    )
+    lv_values = aha_segments(x[~rv], *frame)
+    values[~rv] = np.where(lv_values == LVOT_TAG, LVOT_TAG_RV_REGIONS, lv_values)
+    tags = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, c["cells"], values)
+    return tags, biv_region_markers()

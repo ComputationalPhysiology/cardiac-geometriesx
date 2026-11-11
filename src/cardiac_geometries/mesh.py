@@ -142,6 +142,8 @@ def ukb(
     fiber_method: str | None = None,
     io_backend: str = DEFAULT_IO_BACKEND,
     aha: bool = False,
+    rv_regions: bool = False,
+    rv_septum_fraction: float | None = None,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -208,6 +210,15 @@ def ukb(
         ("RV") and the LV above the mitral plane ("LVOT"), see
         :func:`cardiac_geometries.aha.biv_aha`. Only for the "biv" geometry (not
         clipped), and it needs ukb-atlas >= 2.2 for the landmarks. By default False
+    rv_regions : bool, optional
+        If True (with `aha`), the RV is divided into the 15 regions of Zhong et al.
+        (2012) (tags 18-32) and the septum is split between the LV and the RV by a
+        transventricular Laplace solution; the LV above the mitral plane is 33. See
+        :func:`cardiac_geometries.aha.biv_regions`. By default False
+    rv_septum_fraction : float | None, optional
+        With `rv_regions`, the share of the septal thickness, from the RV side, that
+        belongs to the RV, in [0, 1]: 0 gives the whole septum to the LV, 1 to the RV.
+        Only allowed with `rv_regions`. By default None, meaning 0.5
 
     Returns
     -------
@@ -227,6 +238,14 @@ def ukb(
         raise ValueError("The 'doste' fiber method needs the outflow tracts, use 'ldrb'")
     if aha and (geometry != "biv" or clipped):
         raise ValueError("AHA segments are only supported for the 'biv' geometry (not clipped)")
+    if rv_regions and not aha:
+        raise ValueError("rv_regions needs aha=True")
+    if rv_septum_fraction is not None and not rv_regions:
+        raise ValueError("rv_septum_fraction is only used with rv_regions=True")
+    if rv_regions:
+        rv_septum_fraction = 0.5 if rv_septum_fraction is None else float(rv_septum_fraction)
+        if not 0.0 <= rv_septum_fraction <= 1.0:
+            raise ValueError(f"rv_septum_fraction must be in [0, 1], got {rv_septum_fraction}")
 
     try:
         import ukb.cli
@@ -302,6 +321,8 @@ def ukb(
         "use_burns": use_burns,
         "ghost_mode": ghost_mode.name,
         "aha": aha,
+        "rv_regions": rv_regions,
+        "rv_septum_fraction": rv_septum_fraction,
     }
     cfun, markers = gmsh_geometry.cfun, gmsh_geometry.markers
     if aha:
@@ -315,12 +336,22 @@ def ukb(
                 f"AHA segments need the landmarks in {landmarks_file}, "
                 "written by ukb-atlas >= 2.2 (ukb-atlas surf)"
             )
-        cfun, aha_markers = biv_aha(
-            gmsh_geometry.mesh,
-            gmsh_geometry.ffun,
-            gmsh_geometry.markers,
-            json.loads(landmarks_file.read_text()),
-        )
+        landmarks = json.loads(landmarks_file.read_text())
+        if rv_regions:
+            from .aha import biv_regions
+
+            assert rv_septum_fraction is not None
+            cfun, aha_markers = biv_regions(
+                gmsh_geometry.mesh,
+                gmsh_geometry.ffun,
+                gmsh_geometry.markers,
+                landmarks,
+                rv_septum_fraction=rv_septum_fraction,
+            )
+        else:
+            cfun, aha_markers = biv_aha(
+                gmsh_geometry.mesh, gmsh_geometry.ffun, gmsh_geometry.markers, landmarks
+            )
         # The AHA tags replace the cell tags
         markers = {k: v for k, v in markers.items() if v[1] != 3} | aha_markers
     if comm.rank == 0:
