@@ -216,9 +216,10 @@ def ukb(
         transventricular Laplace solution; the LV above the mitral plane is 33. See
         :func:`cardiac_geometries.aha.biv_regions`. By default False
     rv_septum_fraction : float | None, optional
-        With `rv_regions`, the share of the septal thickness, from the RV side, that
-        belongs to the RV, in [0, 1]: 0 gives the whole septum to the LV, 1 to the RV.
-        Only allowed with `rv_regions`. By default None, meaning 0.5
+        With `rv_regions`, the share of the septum, in the transventricular coordinate
+        from the RV side, that belongs to the RV, in [0, 1]: 0 gives the whole septum to
+        the LV, 1 to the RV, 0.5 splits it at the middle (Cobiveco) and 1/3 approximates
+        Doste et al. (2019). Only allowed with `rv_regions`. By default None, meaning 0.5
 
     Returns
     -------

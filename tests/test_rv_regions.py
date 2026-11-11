@@ -217,11 +217,20 @@ def test_biv_regions_fraction_extremes(ukb_regions):
     ncells = geo.mesh.topology.index_map(3).size_local
     tags0, _ = regions(geo, landmarks, 0.0)
     assert not set(all_values(tags0)) & set(RV_SEPTAL)
-    # With no RV septum the LV cells are exactly biv_aha's (with the LVOT as 33)
+    # With no RV septum the LV cells are biv_aha's (with the LVOT as 33), except the RV wall at the
+    # junction (outside the septal arc), which biv_regions moves to the RV free wall
     ref, _ = aha.biv_aha(geo.mesh, geo.ffun, geo.markers, landmarks)
-    lv = ref.values[:ncells] != aha.RV_TAG
+    ref_lv = ref.values[:ncells] != aha.RV_TAG
     expected = np.where(ref.values[:ncells] == aha.LVOT_TAG, 33, ref.values[:ncells])
-    assert np.array_equal(tags0.values[:ncells][lv], expected[lv])
+    new = tags0.values[:ncells]
+    still_lv = ref_lv & ((new <= 17) | (new == 33))
+    assert np.array_equal(new[still_lv], expected[still_lv])
+    moved = ref_lv & ~still_lv
+    assert set(np.unique(new[moved])) <= {18, 19, 20, 23, 24, 25, 28, 29, 31, 32}
+    # ... and that band is thin: under 15% of the cells biv_aha calls LV
+    assert MPI.COMM_WORLD.allreduce(int(moved.sum())) < 0.15 * MPI.COMM_WORLD.allreduce(
+        int(ref_lv.sum())
+    )
     tags1, _ = regions(geo, landmarks, 1.0)
     assert not set(all_values(tags1)) & set(LV_SEPTAL)
     with pytest.raises(ValueError, match="rv_septum_fraction"):
@@ -339,3 +348,26 @@ def test_ukb_cli_rv_regions(tmp_path):
     assert res.exit_code == 0, res.output
     info = json.loads((path / "biv" / "info.json").read_text())
     assert info["rv_regions"] is True and info["rv_septum_fraction"] == 0.4
+
+
+def test_biv_regions_insertion_band_is_rv(ukb_regions):
+    # Cells just outside the septal arc whose nearest RV landmark node is an insertion node are not
+    # free wall by biv_aha's test, but where they are nearer the RV endocardium than the LV
+    # endocardium they are RV wall at the junction and must get an RV region, not an AHA segment
+    _, geo, landmarks = ukb_regions
+    m = geo.mesh
+    ncells = m.topology.index_map(3).size_local
+    x = dolfinx.mesh.compute_midpoints(m, 3, np.arange(ncells, dtype=np.int32))
+    apex, mv = aha.lv_long_axis(m, geo.ffun, geo.markers)
+    septum = np.asarray(landmarks["rv_septum"], dtype=float)
+    s, psi, width = aha._short_axis_frame(
+        x, apex, mv, landmarks["insertion"], landmarks["valves"]["PV"], septum.mean(axis=0)
+    )
+    rv_nodes = np.vstack([np.asarray(landmarks["rv_freewall"], dtype=float), septum])
+    d_rv, _ = aha._nearest(x, rv_nodes)
+    lv_endo = aha._gather_facet_midpoints(m, geo.ffun, geo.markers["LV_ENDO"][0])
+    d_lv, _ = aha._nearest(x, lv_endo)
+    band = (psi >= width) & (s >= 0.0) & (s <= 1.0) & (d_rv < d_lv)
+    values = geo.cfun.values[:ncells]
+    lv_tagged = band & (values <= 17)
+    assert MPI.COMM_WORLD.allreduce(int(lv_tagged.sum())) == 0
