@@ -131,3 +131,211 @@ def test_aha_segments_unchanged_by_refactor():
     x = polar(12.5, T.ravel(), Z.ravel())
     labels = aha.aha_segments(x, APEX, BASE, INSERTION, ANTERIOR_REF, septum_ref=SEPTUM_REF)
     assert labels.reshape(len(theta), len(z)).tolist() == AHA_GRID
+
+
+# ---------------------------------------------------------------------------
+# The UKB mean shape: AHA segments plus the RV regions, the septum split by u
+# ---------------------------------------------------------------------------
+import json  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+from mpi4py import MPI  # noqa: E402
+
+import dolfinx  # noqa: E402
+import ufl  # noqa: E402
+from click.testing import CliRunner  # noqa: E402
+
+from cardiac_geometries import cli, mesh  # noqa: E402
+from cardiac_geometries.geometry import Geometry  # noqa: E402
+
+RV_SEPTAL = (21, 22, 26, 27, 30)
+LV_SEPTAL = (2, 3, 8, 9)  # basal and mid; the apical septal segment is 90 degrees, not the arc
+
+
+def build(path, **kwargs):
+    return mesh.ukb(
+        path, char_length_max=5.0, char_length_min=5.0, create_fibers=False, aha=True, **kwargs
+    )
+
+
+@pytest.fixture(scope="module")
+def ukb_regions(tmp_path_factory):
+    path = MPI.COMM_WORLD.bcast(tmp_path_factory.mktemp("ukb-rv"), root=0)
+    geo = build(path, rv_regions=True)
+    landmarks = json.loads((path / "landmarks_ED.json").read_text())
+    return path, geo, landmarks
+
+
+def all_values(tags):
+    return np.unique(np.hstack(MPI.COMM_WORLD.allgather(tags.values)))
+
+
+def volumes(m, tags, ids):
+    dx = ufl.Measure("dx", domain=m, subdomain_data=tags)
+    out = {}
+    for i in ids:
+        local = dolfinx.fem.assemble_scalar(dolfinx.fem.form(1.0 * dx(int(i), domain=m)))
+        out[int(i)] = m.comm.allreduce(local)
+    return out
+
+
+def regions(geo, landmarks, fraction):
+    return aha.biv_regions(geo.mesh, geo.ffun, geo.markers, landmarks, rv_septum_fraction=fraction)
+
+
+def test_biv_regions_tags_every_cell(ukb_regions):
+    _, geo, _ = ukb_regions
+    ncells = geo.mesh.topology.index_map(3).size_local
+    owned = geo.cfun.indices[geo.cfun.indices < ncells]
+    assert len(np.unique(owned)) == ncells
+    assert all_values(geo.cfun).tolist() == list(range(1, 34))
+
+
+def test_biv_regions_rv_volumes(ukb_regions):
+    _, geo, _ = ukb_regions
+    vol = volumes(geo.mesh, geo.cfun, range(18, 33))
+    rv = sum(vol.values())
+    shares = {k: v / rv for k, v in vol.items()}
+    assert all(0.02 <= shares[k] <= 0.20 for k in range(18, 31)), shares
+    # Measured on the mean shape: outlet + inlet hold 12-14% of the RV (with the RV half of the
+    # septum), about two regions' share; the body regions 3-11% each
+    assert 0.08 <= shares[31] + shares[32] <= 0.30, shares
+
+
+def test_biv_regions_septum_halves(ukb_regions):
+    _, geo, landmarks = ukb_regions
+    half = volumes(geo.mesh, geo.cfun, RV_SEPTAL)
+    tags_all, _ = regions(geo, landmarks, 1.0)
+    whole = volumes(geo.mesh, tags_all, RV_SEPTAL)
+    ratio = sum(half.values()) / sum(whole.values())
+    assert 0.3 <= ratio <= 0.7, ratio
+
+
+def test_biv_regions_fraction_extremes(ukb_regions):
+    _, geo, landmarks = ukb_regions
+    ncells = geo.mesh.topology.index_map(3).size_local
+    tags0, _ = regions(geo, landmarks, 0.0)
+    assert not set(all_values(tags0)) & set(RV_SEPTAL)
+    # With no RV septum the LV cells are exactly biv_aha's (with the LVOT as 33)
+    ref, _ = aha.biv_aha(geo.mesh, geo.ffun, geo.markers, landmarks)
+    lv = ref.values[:ncells] != aha.RV_TAG
+    expected = np.where(ref.values[:ncells] == aha.LVOT_TAG, 33, ref.values[:ncells])
+    assert np.array_equal(tags0.values[:ncells][lv], expected[lv])
+    tags1, _ = regions(geo, landmarks, 1.0)
+    assert not set(all_values(tags1)) & set(LV_SEPTAL)
+    with pytest.raises(ValueError, match="rv_septum_fraction"):
+        regions(geo, landmarks, 1.5)
+
+
+def test_biv_regions_markers(ukb_regions):
+    _, geo, _ = ukb_regions
+    markers = aha.biv_region_markers()
+    assert markers["LVOT"] == (33, 3) and "RV" not in markers
+    assert [markers[n][0] for n in aha.RV_REGION_NAMES] == list(range(18, 33))
+    assert markers["BASAL-ANTERIOR"] == (1, 3) and markers["APEX"] == (17, 3)
+    assert aha.aha_markers()["LVOT"] == (19, 3)  # unchanged without RV regions
+    assert tuple(geo.markers["LVOT"]) == (33, 3) and "RV" not in geo.markers
+
+
+def test_transventricular_boundary_values(ukb_regions):
+    _, geo, landmarks = ukb_regions
+    u = aha.transventricular(geo.mesh, geo.ffun, geo.markers)
+    V = u.function_space
+    for name, value in (("RV_ENDO", 0.0), ("LV_ENDO", 1.0)):
+        dofs = dolfinx.fem.locate_dofs_topological(V, 2, geo.ffun.find(geo.markers[name][0]))
+        assert np.allclose(u.x.array[dofs], value, atol=1e-12)
+    # On the septal candidates (all RV septal with fraction 1) u is about one half on average
+    tags1, _ = regions(geo, landmarks, 1.0)
+    dx = ufl.Measure("dx", domain=geo.mesh, subdomain_data=tags1)
+    num = sum(
+        geo.mesh.comm.allreduce(dolfinx.fem.assemble_scalar(dolfinx.fem.form(u * dx(i))))
+        for i in RV_SEPTAL
+    )
+    den = sum(volumes(geo.mesh, tags1, RV_SEPTAL).values())
+    assert 0.4 < num / den < 0.6
+
+
+def test_aha_alone_unchanged(ukb_regions):
+    path, geo, landmarks = ukb_regions
+    from cardiac_geometries import utils
+
+    plain = utils.gmsh2dolfin(comm=MPI.COMM_WORLD, msh_file=path / "ED.msh")
+    ref, ref_markers = aha.biv_aha(plain.mesh, plain.ffun, plain.markers, landmarks)
+    assert all_values(ref).tolist() == list(range(1, 20))
+    assert ref_markers == aha.aha_markers()
+
+
+def test_biv_regions_mpi(ukb_regions, tmp_path):
+    if MPI.COMM_WORLD.size > 1:
+        pytest.skip("launches its own MPI runs")
+    path, _, _ = ukb_regions
+    script = tmp_path / "volumes.py"
+    script.write_text(
+        f"""
+import json
+from pathlib import Path
+from mpi4py import MPI
+import dolfinx, ufl
+from cardiac_geometries import aha, utils
+geo = utils.gmsh2dolfin(comm=MPI.COMM_WORLD, msh_file=Path({str(path / "ED.msh")!r}))
+landmarks = json.loads(Path({str(path / "landmarks_ED.json")!r}).read_text())
+tags, _ = aha.biv_regions(geo.mesh, geo.ffun, geo.markers, landmarks)
+dx = ufl.Measure("dx", domain=geo.mesh, subdomain_data=tags)
+def volume(i):
+    local = dolfinx.fem.assemble_scalar(dolfinx.fem.form(1.0 * dx(i, domain=geo.mesh)))
+    return geo.mesh.comm.allreduce(local)
+vols = [volume(i) for i in range(1, 34)]
+if MPI.COMM_WORLD.rank == 0:
+    Path({str(tmp_path)!r}, f"vols{{MPI.COMM_WORLD.size}}.json").write_text(json.dumps(vols))
+"""
+    )
+    for n in (1, 2):
+        r = subprocess.run(
+            ["mpirun", "-n", str(n), sys.executable, str(script)], capture_output=True, text=True
+        )
+        assert r.returncode == 0, r.stderr[-2000:]
+    v1 = json.loads((tmp_path / "vols1.json").read_text())
+    v2 = json.loads((tmp_path / "vols2.json").read_text())
+    assert np.allclose(v1, v2, rtol=1e-10)
+    assert min(v1) > 0
+
+
+def test_ukb_rv_regions_roundtrip(ukb_regions):
+    path, geo, _ = ukb_regions
+    loaded = Geometry.from_folder(comm=MPI.COMM_WORLD, folder=path)
+    assert all_values(loaded.cfun).tolist() == list(range(1, 34))
+    vol = volumes(geo.mesh, geo.cfun, range(1, 34))
+    vol_loaded = volumes(loaded.mesh, loaded.cfun, range(1, 34))
+    assert np.allclose(list(vol.values()), list(vol_loaded.values()), rtol=1e-12)
+    assert {k: tuple(v) for k, v in loaded.markers.items()} == {
+        k: tuple(v) for k, v in geo.markers.items()
+    }
+    info = json.loads((path / "info.json").read_text())
+    assert info["rv_regions"] is True and info["rv_septum_fraction"] == 0.5
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        (dict(rv_regions=True), "aha"),
+        (dict(aha=True, rv_septum_fraction=0.3), "rv_regions"),
+        (dict(aha=True, rv_regions=True, rv_septum_fraction=1.5), "rv_septum_fraction"),
+        (dict(aha=True, rv_regions=True, geometry="lv"), "biv"),
+    ],
+)
+def test_ukb_rv_regions_errors(tmp_path, kwargs, message):
+    path = MPI.COMM_WORLD.bcast(tmp_path, root=0)
+    kwargs = {"aha": False, **kwargs}
+    with pytest.raises(ValueError, match=message):
+        mesh.ukb(path, char_length_max=5.0, char_length_min=5.0, create_fibers=False, **kwargs)
+
+
+def test_ukb_cli_rv_regions(tmp_path):
+    runner = CliRunner()
+    path = MPI.COMM_WORLD.bcast(tmp_path, root=0)
+    args = [str(path / "biv"), "--char-length-max", "5", "--char-length-min", "5", "--aha"]
+    res = runner.invoke(cli.ukb, args + ["--rv-regions", "--rv-septum-fraction", "0.4"])
+    assert res.exit_code == 0, res.output
+    info = json.loads((path / "biv" / "info.json").read_text())
+    assert info["rv_regions"] is True and info["rv_septum_fraction"] == 0.4

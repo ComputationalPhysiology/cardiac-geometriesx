@@ -2,6 +2,7 @@ from typing import Any
 
 import dolfinx
 import numpy as np
+import ufl
 
 
 def focal(r_long_endo: float | np.ndarray, r_short_endo: float | np.ndarray) -> float | np.ndarray:
@@ -653,6 +654,22 @@ def biv_aha(
     tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]
         The cell tags and their markers
     """
+    c = _biv_cells(mesh, ffun, markers, landmarks)
+    rv = c["free_wall"]
+    values = np.full(len(c["cells"]), RV_TAG, dtype=np.int32)
+    values[~rv] = aha_segments(c["x"][~rv], *c["frame"])
+    tags = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, c["cells"], values)
+    return tags, aha_markers()
+
+
+def _biv_cells(
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    markers: dict[str, Any],
+    landmarks: dict[str, Any],
+) -> dict[str, Any]:
+    """The owned cells of a UKB BiV, their midpoints, the RV free-wall mask and the short-axis
+    frame arguments (apex, base centre, insertion, anterior and septal references)."""
     missing = [k for k in ("insertion", "rv_freewall", "rv_septum", "valves") if k not in landmarks]
     if missing:
         raise ValueError(f"Missing landmarks {missing}")
@@ -670,16 +687,141 @@ def biv_aha(
     rv_nodes = np.vstack([freewall, septum])
     d_rv, index = _nearest(x, rv_nodes)
     d_lv, _ = _nearest(x, _gather_facet_midpoints(mesh, ffun, _marker(markers, "LV_ENDO")))
-    rv = (index < len(freewall)) & (d_rv < d_lv)
-
-    values = np.full(ncells, RV_TAG, dtype=np.int32)
-    values[~rv] = aha_segments(
-        x[~rv],
+    frame = (
         apex,
         mv_centre,
         np.asarray(landmarks["insertion"], dtype=float),
         np.asarray(landmarks["valves"]["PV"], dtype=float),
-        septum_ref=septum.mean(axis=0),
+        septum.mean(axis=0),
     )
-    tags = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, cells, values)
-    return tags, aha_markers()
+    return {
+        "cells": cells,
+        "x": x,
+        "free_wall": (index < len(freewall)) & (d_rv < d_lv),
+        "frame": frame,
+        "rv_nodes": np.vstack([np.asarray(landmarks["rv_freewall"], dtype=float), septum]),
+    }
+
+
+def transventricular(
+    mesh: dolfinx.mesh.Mesh, ffun: dolfinx.mesh.MeshTags, markers: dict[str, Any]
+) -> dolfinx.fem.Function:
+    """The transventricular Laplace solution (P1): 0 on the RV endocardium (``RV_ENDO``), 1 on
+    the LV endocardium (``LV_ENDO``) and zero flux elsewhere. As in Doste et al. (2019) and the
+    first step of Cobiveco (Schuler et al. 2021), its 0.5 level runs through the middle of the
+    septum."""
+    from dolfinx.fem.petsc import LinearProblem
+
+    missing = [name for name in ("RV_ENDO", "LV_ENDO") if name not in markers]
+    if missing:
+        raise ValueError(f"Missing markers {missing}")
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1))
+    fdim = mesh.topology.dim - 1
+    mesh.topology.create_connectivity(fdim, mesh.topology.dim)
+    bcs = [
+        dolfinx.fem.dirichletbc(
+            dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(value)),
+            dolfinx.fem.locate_dofs_topological(V, fdim, ffun.find(_marker(markers, name))),
+            V,
+        )
+        for name, value in (("RV_ENDO", 0.0), ("LV_ENDO", 1.0))
+    ]
+    u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
+    zero = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
+    problem = LinearProblem(
+        ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx,
+        zero * v * ufl.dx,
+        bcs=bcs,
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        petsc_options_prefix="cardiac_geometriesx_transventricular",
+    )
+    uh = problem.solve()
+    assert isinstance(uh, dolfinx.fem.Function)
+    uh.x.scatter_forward()
+    return uh
+
+
+def biv_region_markers() -> dict[str, tuple[int, int]]:
+    """The names of the 17 AHA segments (1-17), the 15 RV regions of Zhong et al. (2012) (18-32)
+    and the LV above the base (33), as tagged by :func:`biv_regions`."""
+    markers = {k: v for k, v in aha_markers().items() if v[0] <= 17}
+    for k, name in enumerate(RV_REGION_NAMES, start=1):
+        markers[name] = (RV_REGION_OFFSET + k, 3)
+    markers["LVOT"] = (LVOT_TAG_RV_REGIONS, 3)
+    return markers
+
+
+def biv_regions(
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    markers: dict[str, Any],
+    landmarks: dict[str, Any],
+    rv_septum_fraction: float = 0.5,
+) -> tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]:
+    """AHA segments of the LV and the RV regions of Zhong et al. (2012) on a UKB BiV.
+
+    The RV free wall is found as in :func:`biv_aha`. The septum (the cells between the two
+    insertions, with 0 <= s <= 1, that are not RV free wall) is split by the transventricular
+    Laplace solution u (:func:`transventricular`): a septal cell belongs to the RV if u at its
+    midpoint is below ``rv_septum_fraction``. So 0 gives the whole septum to the LV (as
+    :func:`biv_aha`), 1 gives it all to the RV, and the default 0.5 splits it in the middle, as
+    Zhong et al. and Doste et al. (2019) do. RV cells get :func:`rv_segments` (tags 18-32), with
+    the RV body from its lowest landmark node to the centre of the tricuspid valve; LV cells get
+    :func:`aha_segments` (1-17), and the LV above the mitral plane is 33.
+
+    Parameters
+    ----------
+    mesh, ffun, markers, landmarks
+        As in :func:`biv_aha`; the markers also need ``RV_ENDO``
+    rv_septum_fraction : float
+        The share of the septal thickness, from the RV side, that belongs to the RV, in [0, 1]
+
+    Returns
+    -------
+    tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]
+        The cell tags and their markers (:func:`biv_region_markers`)
+    """
+    if not 0.0 <= rv_septum_fraction <= 1.0:
+        raise ValueError(f"rv_septum_fraction must be in [0, 1], got {rv_septum_fraction}")
+    c = _biv_cells(mesh, ffun, markers, landmarks)
+    x, free_wall, frame = c["x"], c["free_wall"], c["frame"]
+    s, psi, width = _short_axis_frame(x, *frame)
+    candidates = ~free_wall & (s >= 0.0) & (s <= 1.0) & (psi < width)
+    if rv_septum_fraction == 0.0:
+        rv_septum = np.zeros_like(candidates)
+    elif rv_septum_fraction == 1.0:
+        rv_septum = candidates
+    else:
+        u = transventricular(mesh, ffun, markers)
+        u0 = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("DG", 0)))
+        u0.interpolate(u)
+        rv_septum = candidates & (u0.x.array[: len(c["cells"])] < rv_septum_fraction)
+
+    apex, mv_centre = frame[0], frame[1]
+    e_l = mv_centre - apex
+    length = float(np.linalg.norm(e_l))
+    e_l = e_l / length
+    s_min = float(np.min((c["rv_nodes"] - apex) @ e_l) / length)
+    tv = np.asarray(landmarks["valves"]["TV"], dtype=float)
+    s_top = float((tv - apex) @ e_l / length)
+
+    rv = free_wall | rv_septum
+    values = np.empty(len(c["cells"]), dtype=np.int32)
+    _, _, insertion, anterior_ref, septum_ref = frame
+    values[rv] = rv_segments(
+        x[rv],
+        rv_septum[rv],
+        apex,
+        mv_centre,
+        insertion,
+        anterior_ref,
+        septum_ref,
+        s_min,
+        s_top,
+        np.asarray(landmarks["valves"]["PV"], dtype=float),
+        tv,
+    )
+    lv_values = aha_segments(x[~rv], *frame)
+    values[~rv] = np.where(lv_values == LVOT_TAG, LVOT_TAG_RV_REGIONS, lv_values)
+    tags = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, c["cells"], values)
+    return tags, biv_region_markers()
