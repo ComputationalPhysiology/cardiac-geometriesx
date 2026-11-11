@@ -256,6 +256,77 @@ def ukb(
     )
 
 
+@click.command(
+    "from-volume",
+    help=(
+        "Create a geometry from a tetrahedral volume mesh and labelled boundary surfaces (e.g. a "
+        "patient mesh): every boundary face must lie on exactly one surface"
+    ),
+)
+@click.argument(
+    "outdir",
+    required=True,
+    type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
+)
+@click.argument("volume", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--surface",
+    "surfaces",
+    multiple=True,
+    required=True,
+    help="NAME=FILE, e.g. LV_ENDO=endo_lv.ply (repeat for each marker)",
+)
+@click.option(
+    "--scale", default=1.0, type=float, help="Multiply all coordinates", show_default=True
+)
+@click.option(
+    "--tol",
+    default=None,
+    type=float,
+    help="Distance within which surface and volume nodes match (default: exact)",
+)
+@click.option(
+    "--create-fibers/--no-create-fibers", default=False, help="Create fibers", show_default=True
+)
+@click.option(
+    "--fiber-method",
+    default="ldrb",
+    type=click.Choice(["ldrb", "doste"]),
+    help="Bayer et al. (ldrb) or Doste et al. (doste, needs the valves)",
+    show_default=True,
+)
+@click.option("--fiber-space", default="P_1", type=str, help="Fiber space", show_default=True)
+@io_backend_option
+def from_volume(
+    outdir: str,
+    volume: str,
+    surfaces: tuple[str, ...],
+    scale: float = 1.0,
+    tol: float | None = None,
+    create_fibers: bool = False,
+    fiber_method: str = "ldrb",
+    fiber_space: str = "P_1",
+    io_backend: str = DEFAULT_IO_BACKEND,
+):
+    parsed = {}
+    for item in surfaces:
+        name, sep, file = item.partition("=")
+        if not sep or not name or not file:
+            raise click.BadParameter(f"Expected NAME=FILE, got {item!r}", param_hint="--surface")
+        parsed[name] = Path(file)
+    mesh.from_volume(
+        outdir=Path(outdir),
+        volume=Path(volume),
+        surfaces=parsed,
+        scale=scale,
+        tol=tol,
+        create_fibers=create_fibers,
+        fiber_method=fiber_method,
+        fiber_space=fiber_space,
+        io_backend=io_backend,
+    )
+
+
 @click.command(help="Create LV ellipsoidal geometry")
 @click.argument(
     "outdir",
@@ -1699,6 +1770,7 @@ app.add_command(slab)
 app.add_command(slab_in_bath)
 app.add_command(gui)
 app.add_command(ukb)
+app.add_command(from_volume)
 app.add_command(cylinder)
 app.add_command(cylinder_elliptical)
 app.add_command(cylinder_racetrack)

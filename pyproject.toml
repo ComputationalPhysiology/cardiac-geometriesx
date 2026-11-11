@@ -37,6 +37,9 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
+meshio = [
+    "meshio",
+]
 dev = [
     "bump-my-version",
     "ipython",
@@ -63,6 +66,7 @@ docs = [
     "sphinx-copybutton",
 ]
 test = [
+    "meshio",
     "pre-commit",
     "pytest",
     "pytest-cov",

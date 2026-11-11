@@ -173,3 +173,183 @@ def test_transform_markers_base_and_valves():
 )
 def test_transform_markers_ukb_unchanged(markers, base):
     assert cgmesh.transform_markers(markers)["base"] == base
+
+
+# ---------------------------------------------------------------------------
+# mesh.from_volume on a thick spherical shell (radii 1 and 2) cut at z = 0.5 (open at the base)
+# ---------------------------------------------------------------------------
+import json  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+from mpi4py import MPI  # noqa: E402
+
+from click.testing import CliRunner  # noqa: E402
+
+from cardiac_geometries import cli  # noqa: E402
+from cardiac_geometries.geometry import Geometry  # noqa: E402
+
+
+def make_shell(path):
+    """A tetrahedral shell written as volume.vtu and one .ply per surface (rank 0)."""
+    import gmsh
+    import meshio
+
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("shell")
+    outer = gmsh.model.occ.addSphere(0, 0, 0, 2.0)
+    inner = gmsh.model.occ.addSphere(0, 0, 0, 1.0)
+    shell, _ = gmsh.model.occ.cut([(3, outer)], [(3, inner)])
+    top = gmsh.model.occ.addBox(-3, -3, 0.5, 6, 6, 3)
+    gmsh.model.occ.cut(shell, [(3, top)])
+    gmsh.model.occ.synchronize()
+    gmsh.option.setNumber("Mesh.CharacteristicLengthMax", 0.35)
+    gmsh.model.mesh.generate(3)
+    tags, coords, _ = gmsh.model.mesh.getNodes()
+    points = coords.reshape(-1, 3)
+    order = np.argsort(tags)
+    index = np.empty(int(tags.max()) + 1, dtype=np.int64)
+    index[tags[order]] = np.arange(len(tags))[order]
+    _, nodes = gmsh.model.mesh.getElementsByType(4)
+    gmsh.finalize()
+    tets = index[nodes.astype(np.int64)].reshape(-1, 4)
+    meshio.write(path / "volume.vtu", meshio.Mesh(points, [("tetra", tets)]))
+    faces = labelled.boundary_faces(tets)
+    centre = points[faces].mean(axis=1)
+    radius = np.linalg.norm(centre, axis=1)
+    names = np.where(
+        np.isclose(centre[:, 2], 0.5, atol=1e-8),
+        "BASE",
+        np.where(radius < 1.5, "LV_ENDO", "EPI"),
+    )
+    files = {}
+    for name in ("LV_ENDO", "EPI", "BASE"):
+        files[name] = path / f"{name.lower()}.ply"
+        meshio.write(files[name], meshio.Mesh(points, [("triangle", faces[names == name])]))
+    return path / "volume.vtu", files, {n: int(np.sum(names == n)) for n in files}
+
+
+@pytest.fixture(scope="module")
+def shell(tmp_path_factory):
+    path = MPI.COMM_WORLD.bcast(tmp_path_factory.mktemp("shell"), root=0)
+    result = make_shell(path) if MPI.COMM_WORLD.rank == 0 else None
+    return MPI.COMM_WORLD.bcast(result, root=0)
+
+
+def facet_counts(geo):
+    out = {}
+    for name, (marker, dim) in geo.markers.items():
+        if dim != 2:
+            continue
+        owned = (
+            geo.ffun.indices[geo.ffun.values == marker] < geo.mesh.topology.index_map(2).size_local
+        )
+        local = int(np.sum(owned))
+        out[name] = geo.mesh.comm.allreduce(local)
+    return out
+
+
+def test_from_volume_markers(shell, tmp_path):
+    volume, surfaces, expected = shell
+    geo = cgmesh.from_volume(MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces)
+    assert facet_counts(geo) == expected
+    assert geo.markers["LV_ENDO"] == (1, 2) and geo.markers["EPI"] == (3, 2)
+    assert geo.markers["BASE"] == (4, 2)
+
+
+def test_from_volume_scale(shell, tmp_path):
+    volume, surfaces, _ = shell
+    geo = cgmesh.from_volume(
+        MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces, scale=1e-3
+    )
+    x = geo.mesh.geometry.x
+    top = geo.mesh.comm.allreduce(float(x[:, 2].max()) if len(x) else -np.inf, op=MPI.MAX)
+    assert top == pytest.approx(0.5e-3)
+
+
+def test_from_volume_fibers_bayer(shell, tmp_path):
+    volume, surfaces, _ = shell
+    geo = cgmesh.from_volume(
+        MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces, create_fibers=True
+    )
+    f = geo.f0.x.array.reshape(-1, 3)
+    assert np.all(np.isfinite(f))
+    assert np.allclose(np.linalg.norm(f, axis=1), 1.0, atol=1e-8)
+
+
+def test_from_volume_doste_needs_valves(shell, tmp_path):
+    volume, surfaces, _ = shell
+    with pytest.raises(ValueError, match="MV"):
+        cgmesh.from_volume(
+            MPI.COMM_WORLD.bcast(tmp_path, root=0),
+            volume,
+            surfaces=surfaces,
+            create_fibers=True,
+            fiber_method="doste",
+        )
+
+
+def test_from_volume_roundtrip(shell, tmp_path):
+    volume, surfaces, expected = shell
+    path = MPI.COMM_WORLD.bcast(tmp_path, root=0)
+    geo = cgmesh.from_volume(path, volume, surfaces=surfaces, create_fibers=True)
+    loaded = Geometry.from_folder(comm=MPI.COMM_WORLD, folder=path)
+    assert {k: tuple(v) for k, v in loaded.markers.items()} == {
+        k: tuple(v) for k, v in geo.markers.items()
+    }
+    assert facet_counts(loaded) == expected
+    assert loaded.f0 is not None
+    info = json.loads((path / "info.json").read_text())
+    assert info["mesh_type"] == "from_volume" and info["scale"] == 1.0
+
+
+def test_from_volume_mpi(shell, tmp_path):
+    if MPI.COMM_WORLD.size > 1:
+        pytest.skip("launches its own MPI runs")
+    volume, surfaces, expected = shell
+    script = tmp_path / "counts.py"
+    script.write_text(
+        f"""
+import json, sys
+from pathlib import Path
+from mpi4py import MPI
+import numpy as np
+from cardiac_geometries import mesh
+out = Path({str(tmp_path)!r}) / f"run{{MPI.COMM_WORLD.size}}"
+surfaces = {{k: Path(v) for k, v in {json.dumps({k: str(v) for k, v in surfaces.items()})}.items()}}
+geo = mesh.from_volume(out, Path({str(volume)!r}), surfaces=surfaces)
+n = geo.mesh.topology.index_map(2).size_local
+counts = {{name: geo.mesh.comm.allreduce(int(np.sum(geo.ffun.indices[geo.ffun.values == m] < n)))
+          for name, (m, d) in geo.markers.items() if d == 2}}
+if MPI.COMM_WORLD.rank == 0:
+    (Path({str(tmp_path)!r}) / f"counts{{MPI.COMM_WORLD.size}}.json").write_text(json.dumps(counts))
+"""
+    )
+    for n in (1, 2):
+        r = subprocess.run(
+            ["mpirun", "-n", str(n), sys.executable, str(script)], capture_output=True, text=True
+        )
+        assert r.returncode == 0, r.stderr[-2000:]
+    c1 = json.loads((tmp_path / "counts1.json").read_text())
+    c2 = json.loads((tmp_path / "counts2.json").read_text())
+    assert c1 == c2 == expected
+
+
+def test_cli_from_volume(shell, tmp_path):
+    volume, surfaces, expected = shell
+    path = MPI.COMM_WORLD.bcast(tmp_path, root=0)
+    args = [str(path / "out"), str(volume)]
+    for name, file in surfaces.items():
+        args += ["--surface", f"{name}={file}"]
+    res = CliRunner().invoke(cli.app, ["from-volume", *args])
+    assert res.exit_code == 0, res.output
+    geo = Geometry.from_folder(comm=MPI.COMM_WORLD, folder=path / "out")
+    assert facet_counts(geo) == expected
+
+
+def test_from_volume_needs_meshio_message(shell, tmp_path, monkeypatch):
+    volume, surfaces, _ = shell
+    monkeypatch.setitem(sys.modules, "meshio", None)
+    with pytest.raises(ImportError, match="cardiac-geometriesx\\[meshio\\]"):
+        cgmesh.from_volume(MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces)

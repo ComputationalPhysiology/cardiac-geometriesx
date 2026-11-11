@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import math
+import typing
 from importlib.metadata import metadata
 from pathlib import Path
 
@@ -2073,6 +2074,199 @@ def cylinder_D_shaped(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
+
+
+def _read_meshio(source):
+    try:
+        import meshio
+    except ImportError as e:
+        raise ImportError(
+            "Reading meshes from files needs meshio: pip install cardiac-geometriesx[meshio]"
+        ) from e
+    return source if isinstance(source, meshio.Mesh) else meshio.read(source)
+
+
+def _write_labelled_msh(
+    path: Path, points: np.ndarray, tets: np.ndarray, faces: np.ndarray, ids: np.ndarray, markers
+) -> None:
+    """Write a tetrahedral mesh with labelled boundary faces as a gmsh file, with one discrete
+    surface entity per marker and physical groups named after the markers."""
+    import gmsh
+
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("from_volume")
+    volume = gmsh.model.addDiscreteEntity(3)
+    node_tags = np.arange(1, len(points) + 1)
+    gmsh.model.mesh.addNodes(3, volume, node_tags, points.ravel())
+    gmsh.model.mesh.addElementsByType(volume, 4, np.arange(1, len(tets) + 1), (tets + 1).ravel())
+    gmsh.model.addPhysicalGroup(3, [volume], markers["Wall"][0], name="Wall")
+    first = len(tets) + 1
+    for name, (marker, dim) in markers.items():
+        if dim != 2:
+            continue
+        tri = faces[ids == marker]
+        surface = gmsh.model.addDiscreteEntity(2)
+        gmsh.model.mesh.addElementsByType(
+            surface, 2, np.arange(first, first + len(tri)), (tri + 1).ravel()
+        )
+        first += len(tri)
+        gmsh.model.addPhysicalGroup(2, [surface], marker, name=name)
+    gmsh.write(str(path))
+    gmsh.finalize()
+
+
+def from_volume(
+    outdir: str | Path,
+    volume,
+    surfaces: dict | None = None,
+    rule=None,
+    scale: float = 1.0,
+    tol: float | None = None,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+    create_fibers: bool = False,
+    fiber_method: str = "ldrb",
+    fiber_space: str = "P_1",
+    fiber_angle_endo: float = 60.0,
+    fiber_angle_epi: float = -60.0,
+    io_backend: str = DEFAULT_IO_BACKEND,
+) -> Geometry:
+    """A geometry from a tetrahedral volume mesh and labelled boundary surfaces, e.g. a patient
+    mesh made with another tool.
+
+    Every boundary face of the volume gets exactly one marker, either from the surface meshes in
+    ``surfaces`` (marker name to a file or ``meshio.Mesh``, matched to the boundary faces by their
+    nodes) or from ``rule`` (see :func:`cardiac_geometries.labelled.label_boundary`). Use the marker
+    names of the UKB geometries (``LV_ENDO``, ``RV_ENDO``, ``EPI``, ``BASE``, ``MV``, ``AV``,
+    ``TV``, ``PV``) so the fiber methods find their boundaries: Bayer's base is ``BASE`` plus the
+    valves, and the method of Doste et al. needs the valves.
+
+    Parameters
+    ----------
+    outdir : str | Path
+        Folder for the gmsh file (``mesh.msh``), the markers and the saved geometry
+    volume : str | Path | meshio.Mesh
+        The volume mesh (linear tetrahedra), read with meshio
+    surfaces : dict | None
+        Marker name to a surface mesh (file or ``meshio.Mesh``) of triangles
+    rule : Callable | None
+        ``rule(faces, points)`` returns the marker name of each boundary face (scaled points)
+    scale : float
+        Multiplies all coordinates (volume and surfaces), e.g. 1e-3 from micrometres to mm.
+        Never guessed
+    tol : float | None
+        Distance within which a surface node matches a volume node (after scaling); by default
+        they must coincide
+    comm : MPI.Comm
+        The communicator
+    create_fibers, fiber_method, fiber_space, fiber_angle_endo, fiber_angle_epi
+        As in :func:`ukb`: fibers by the method of Bayer et al. ("ldrb") or Doste et al. ("doste")
+    io_backend : str
+        io4dolfinx backend for the saved geometry
+
+    Returns
+    -------
+    Geometry
+        The mesh, markers, facet tags and (optionally) fibers
+    """
+    from .labelled import label_boundary
+
+    outdir = Path(outdir)
+    msh_file = outdir / "mesh.msh"
+    error: Exception | None = None
+    if comm.rank == 0:
+        # Read and label on rank 0; any error is raised on every rank (no rank waits forever)
+        try:
+            outdir.mkdir(parents=True, exist_ok=True)
+            vol = _read_meshio(volume)
+            points = np.asarray(vol.points, dtype=float)[:, :3] * scale
+            tets = np.asarray(vol.cells_dict["tetra"], dtype=np.int64)
+            labelled_surfaces = None
+            if surfaces is not None:
+                labelled_surfaces = {}
+                for name, source in surfaces.items():
+                    surface = _read_meshio(source)
+                    labelled_surfaces[name] = (
+                        np.asarray(surface.points, dtype=float)[:, :3] * scale,
+                        np.asarray(surface.cells_dict["triangle"], dtype=np.int64),
+                    )
+            faces, ids, markers = label_boundary(
+                points, tets, surfaces=labelled_surfaces, rule=rule, tol=tol
+            )
+            _write_labelled_msh(msh_file, points, tets, faces, ids, markers)
+        except Exception as e:
+            error = e
+    error = comm.bcast(error, root=0)
+    if error is not None:
+        raise error
+    comm.barrier()
+
+    gmsh_geometry = utils.gmsh2dolfin(comm=comm, msh_file=msh_file)
+    markers = gmsh_geometry.markers
+    info = {
+        "mesh_type": "from_volume",
+        "volume": str(volume) if not hasattr(volume, "points") else "meshio.Mesh",
+        "scale": scale,
+        "tol": tol,
+        "fiber_method": fiber_method if create_fibers else None,
+        "fiber_space": fiber_space,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+    if comm.rank == 0:
+        (outdir / "markers.json").write_text(json.dumps(markers, default=utils.json_serial))
+        (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
+
+    fibers: dict = {}
+    if create_fibers:
+        from .fibers import ldrb_fibers
+
+        if fiber_method == "doste":
+            doste_markers(markers)  # a clear error without the valves
+        angles: dict[str, typing.Any] = {
+            "alpha_endo_lv": fiber_angle_endo,
+            "alpha_epi_lv": fiber_angle_epi,
+        }
+        if fiber_method == "ldrb":
+            angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
+        _, microstructure = ldrb_fibers(
+            mesh=gmsh_geometry.mesh,
+            ffun=gmsh_geometry.ffun,
+            cfun=gmsh_geometry.cfun,
+            markers=markers,
+            fiber_method=fiber_method,
+            fiber_space=fiber_space,
+            **angles,
+        )
+        fibers = microstructure._asdict()
+
+    save_geometry(
+        path=geometry_path(outdir, io_backend),
+        mesh=gmsh_geometry.mesh,
+        markers=markers,
+        info=info,
+        cfun=gmsh_geometry.cfun,
+        ffun=gmsh_geometry.ffun,
+        efun=gmsh_geometry.efun,
+        vfun=gmsh_geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+    )
+    return Geometry(
+        mesh=gmsh_geometry.mesh,
+        markers=markers,
+        cfun=gmsh_geometry.cfun,
+        ffun=gmsh_geometry.ffun,
+        efun=gmsh_geometry.efun,
+        vfun=gmsh_geometry.vfun,
         f0=fibers.get("f0", None),
         s0=fibers.get("s0", None),
         n0=fibers.get("n0", None),
