@@ -698,6 +698,7 @@ def _biv_cells(
         "cells": cells,
         "x": x,
         "free_wall": (index < len(freewall)) & (d_rv < d_lv),
+        "nearer_rv": d_rv < d_lv,
         "frame": frame,
         "rv_nodes": np.vstack([np.asarray(landmarks["rv_freewall"], dtype=float), septum]),
     }
@@ -707,9 +708,11 @@ def transventricular(
     mesh: dolfinx.mesh.Mesh, ffun: dolfinx.mesh.MeshTags, markers: dict[str, Any]
 ) -> dolfinx.fem.Function:
     """The transventricular Laplace solution (P1): 0 on the RV endocardium (``RV_ENDO``), 1 on
-    the LV endocardium (``LV_ENDO``) and zero flux elsewhere. As in Doste et al. (2019) and the
-    first step of Cobiveco (Schuler et al. 2021), its 0.5 level runs through the middle of the
-    septum."""
+    the LV endocardium (``LV_ENDO``) and zero flux elsewhere. This is the transventricular
+    coordinate of Cobiveco (Schuler et al. 2021), whose 0.5 level runs through the middle of the
+    septum. Doste et al. (2019) solve a related problem (-2 on the LV and +1 on the RV
+    endocardium, 0 on the epicardium) whose zero level gives one third of the septum to the RV;
+    ``rv_septum_fraction=1/3`` in :func:`biv_regions` approximates that split."""
     from dolfinx.fem.petsc import LinearProblem
 
     missing = [name for name in ("RV_ENDO", "LV_ENDO") if name not in markers]
@@ -760,13 +763,18 @@ def biv_regions(
 ) -> tuple[dolfinx.mesh.MeshTags, dict[str, tuple[int, int]]]:
     """AHA segments of the LV and the RV regions of Zhong et al. (2012) on a UKB BiV.
 
-    The RV free wall is found as in :func:`biv_aha`. The septum (the cells between the two
-    insertions, with 0 <= s <= 1, that are not RV free wall) is split by the transventricular
-    Laplace solution u (:func:`transventricular`): a septal cell belongs to the RV if u at its
-    midpoint is below ``rv_septum_fraction``. So 0 gives the whole septum to the LV (as
-    :func:`biv_aha`), 1 gives it all to the RV, and the default 0.5 splits it in the middle, as
-    Zhong et al. and Doste et al. (2019) do. RV cells get :func:`rv_segments` (tags 18-32), with
-    the RV body from its lowest landmark node to the centre of the tricuspid valve; LV cells get
+    The RV free wall is found as in :func:`biv_aha`, and the RV wall at the junction with the LV
+    is added to it: cells outside the septal arc that are nearer the RV endocardium than the LV
+    endocardium (their nearest RV landmark node is an insertion node, so :func:`biv_aha` keeps
+    them in the LV). The septum (the cells between the two insertions, with 0 <= s <= 1, that are
+    not RV free wall) is split by the transventricular Laplace solution u
+    (:func:`transventricular`): a septal cell belongs to the RV if u at its midpoint is below
+    ``rv_septum_fraction``. So 0 gives the whole septum to the LV (as :func:`biv_aha`), 1 gives it
+    all to the RV, the default 0.5 splits it at the middle of u (the transventricular boundary of
+    Cobiveco, Schuler et al. 2021), and 1/3 approximates the one third of Doste et al. (2019).
+    Zhong et al. segment the RV endocardial surface and do not split the septum through its
+    thickness, so the split is a choice. RV cells get :func:`rv_segments` (tags 18-32), with the
+    RV body from its lowest landmark node to the centre of the tricuspid valve; LV cells get
     :func:`aha_segments` (1-17), and the LV above the mitral plane is 33.
 
     Parameters
@@ -774,7 +782,7 @@ def biv_regions(
     mesh, ffun, markers, landmarks
         As in :func:`biv_aha`; the markers also need ``RV_ENDO``
     rv_septum_fraction : float
-        The share of the septal thickness, from the RV side, that belongs to the RV, in [0, 1]
+        The share of the septum, in u from the RV side, that belongs to the RV, in [0, 1]
 
     Returns
     -------
@@ -786,6 +794,8 @@ def biv_regions(
     c = _biv_cells(mesh, ffun, markers, landmarks)
     x, free_wall, frame = c["x"], c["free_wall"], c["frame"]
     s, psi, width = _short_axis_frame(x, *frame)
+    # RV wall at the junction: outside the septal arc, nearer the RV than the LV endocardium
+    free_wall = free_wall | (~free_wall & (psi >= width) & c["nearer_rv"])
     candidates = ~free_wall & (s >= 0.0) & (s <= 1.0) & (psi < width)
     if rv_septum_fraction == 0.0:
         rv_septum = np.zeros_like(candidates)
