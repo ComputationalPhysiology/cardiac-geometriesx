@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import math
+import typing
 from importlib.metadata import metadata
 from pathlib import Path
 
@@ -33,10 +34,10 @@ def transform_markers(
         if "RV_SEPTUM" in markers:
             # The LV-only geometries are closed on the RV side by the RV septum
             epi.append(markers["RV_SEPTUM"][0])
-        if "BASE" in markers:
-            base = [markers["BASE"][0]]
-        else:
-            base = [markers[valve][0] for valve in ("MV", "AV", "TV", "PV") if valve in markers]
+        # The base is the basal cap (BASE, e.g. a patient mesh) and the valves, whichever exist:
+        # clipped UKB geometries have BASE only, the ones with outflow tracts the valves only
+        valves = [markers[valve][0] for valve in ("MV", "AV", "TV", "PV") if valve in markers]
+        base = ([markers["BASE"][0]] if "BASE" in markers else []) + valves
         transformed = {"lv": [markers["LV_ENDO"][0]], "epi": epi, "base": base}
         if "RV_ENDO" in markers:
             transformed["rv"] = [markers["RV_ENDO"][0]]
@@ -2073,6 +2074,226 @@ def cylinder_D_shaped(
         ffun=geometry.ffun,
         efun=geometry.efun,
         vfun=geometry.vfun,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+        info=info,
+    )
+
+
+def _read_surfaces(surfaces: dict, scale: float) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Read triangle surfaces (any format pyvista reads, e.g. PLY, VTP, STL) as (points,
+    triangles)."""
+    try:
+        import pyvista
+    except ImportError as e:
+        raise ImportError(
+            "Reading surfaces needs pyvista: pip install cardiac-geometriesx[pyvista]"
+        ) from e
+    out = {}
+    for name, source in surfaces.items():
+        surface = pyvista.read(source)
+        if not isinstance(surface, pyvista.PolyData):
+            surface = surface.extract_surface()
+        if not surface.is_all_triangles:
+            raise ValueError(f"Surface {name!r} ({source}) is not a triangle surface")
+        out[name] = (
+            np.asarray(surface.points, dtype=float) * scale,
+            np.asarray(surface.regular_faces, dtype=np.int64),
+        )
+    return out
+
+
+def from_volume(
+    outdir: str | Path,
+    volume,
+    surfaces: dict | None = None,
+    rule=None,
+    rule_data: list[str] | None = None,
+    scale: float = 1.0,
+    tol: float | None = None,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+    create_fibers: bool = False,
+    fiber_method: str = "ldrb",
+    fiber_space: str = "P_1",
+    fiber_angle_endo: float = 60.0,
+    fiber_angle_epi: float = -60.0,
+    io_backend: str = DEFAULT_IO_BACKEND,
+) -> Geometry:
+    """A geometry from a tetrahedral volume mesh and labelled boundary surfaces, e.g. a patient
+    mesh made with another tool.
+
+    The volume is read with io4dolfinx's pyvista backend, already distributed, and every boundary
+    facet gets exactly one marker, either from the surface meshes in ``surfaces`` (marker name to a
+    file pyvista reads, e.g. PLY; a facet gets the name of the surface with a triangle on its three
+    vertices) or from ``rule`` (see :func:`cardiac_geometries.labelled.label_facets`). Use the
+    marker
+    names of the UKB geometries (``LV_ENDO``, ``RV_ENDO``, ``EPI``, ``BASE``, ``MV``, ``AV``,
+    ``TV``, ``PV``) so the fiber methods find their boundaries: Bayer's base is ``BASE`` plus the
+    valves, and the method of Doste et al. needs the valves.
+
+    Parameters
+    ----------
+    outdir : str | Path
+        Folder for the markers and the saved geometry
+    volume : str | Path
+        The volume mesh (linear tetrahedra), a file io4dolfinx's pyvista backend reads (e.g. VTU,
+        VTK)
+    surfaces : dict | None
+        Marker name to a triangle surface file
+    rule : Callable | None
+        ``rule(coords, data)`` returns the marker name of each boundary facet, from its vertex
+        coordinates (F, 3, 3, scaled) and ``data``: the point data named in ``rule_data`` at those
+        vertices, each (F, 3)
+    rule_data : list[str] | None
+        Names of point data in the volume file that the rule needs
+    scale : float
+        Multiplies all coordinates (volume and surfaces), e.g. 1e-3 from micrometres to mm.
+        Never guessed
+    tol : float | None
+        Distance within which a surface point matches a facet vertex (after scaling); by default
+        round-off (1e-6 of the surfaces' size)
+    comm : MPI.Comm
+        The communicator
+    create_fibers, fiber_method, fiber_space, fiber_angle_endo, fiber_angle_epi
+        As in :func:`ukb`: fibers by the method of Bayer et al. ("ldrb") or Doste et al. ("doste")
+    io_backend : str
+        io4dolfinx backend for the saved geometry
+
+    Returns
+    -------
+    cardiac_geometries.geometry.Geometry
+        The mesh, markers, facet tags and (optionally) fibers
+    """
+    import io4dolfinx
+
+    from .labelled import check_labels, label_facets, marker_ids
+
+    if (surfaces is None) == (rule is None):
+        raise ValueError("Give exactly one of surfaces and rule")
+    outdir = Path(outdir)
+    if comm.rank == 0:
+        outdir.mkdir(parents=True, exist_ok=True)
+
+    # Surfaces are read on rank 0 (so a reading error is raised on every rank) and sent to all
+    surface_data: dict | None = None
+    error: Exception | None = None
+    if surfaces is not None and comm.rank == 0:
+        try:
+            surface_data = _read_surfaces(surfaces, scale)
+        except Exception as e:
+            error = e
+    error = comm.bcast(error, root=0)
+    if error is not None:
+        raise error
+    surface_data = comm.bcast(surface_data, root=0)
+
+    try:
+        import pyvista  # noqa: F401  (io4dolfinx's pyvista backend needs it)
+    except ImportError as e:
+        raise ImportError(
+            "Reading the volume needs pyvista: pip install cardiac-geometriesx[pyvista]"
+        ) from e
+    # Double precision whatever the file stores (e.g. legacy VTK in float32): the fiber methods
+    # need it
+    mesh = io4dolfinx.read_mesh(
+        Path(volume), comm, backend="pyvista", backend_args={"dtype": np.float64}
+    )
+    if mesh.topology.cell_name() != "tetrahedron":
+        raise ValueError(f"The volume must be a tetrahedral mesh, got {mesh.topology.cell_name()}")
+    mesh.geometry.x[:] *= scale
+
+    tdim = mesh.topology.dim
+    mesh.topology.create_connectivity(tdim - 1, tdim)
+    num_owned = mesh.topology.index_map(tdim - 1).size_local
+    facets = dolfinx.mesh.exterior_facet_indices(mesh.topology)
+    facets = facets[facets < num_owned].astype(np.int32)
+    geometry_dofs = dolfinx.mesh.entities_to_geometry(mesh, tdim - 1, facets)
+    coords = mesh.geometry.x[geometry_dofs]
+
+    data: dict[str, np.ndarray] = {}
+    for name in rule_data or []:
+        f = io4dolfinx.read_point_data(Path(volume), name, mesh, backend="pyvista")
+        from scipy.spatial import cKDTree
+
+        x = f.function_space.tabulate_dof_coordinates()
+        _, dof = cKDTree(x).query(coords.reshape(-1, 3))
+        data[name] = np.asarray(f.x.array, dtype=float)[dof].reshape(-1, 3)
+
+    names, matched = label_facets(coords, surfaces=surface_data, rule=rule, data=data, tol=tol)
+    sizes = {k: len(t) for k, (_, t) in surface_data.items()} if surface_data else {}
+    check_labels(names, matched, sizes, comm=comm)
+    all_names = set().union(*comm.allgather(set(names.tolist())))
+    markers = marker_ids(all_names)
+
+    values = np.array([markers[n][0] for n in names], dtype=np.int32)
+    order = np.argsort(facets)
+    ffun = dolfinx.mesh.meshtags(mesh, tdim - 1, facets[order], values[order])
+    cells = np.arange(mesh.topology.index_map(tdim).size_local, dtype=np.int32)
+    cfun = dolfinx.mesh.meshtags(
+        mesh, tdim, cells, np.full(len(cells), markers["Wall"][0], np.int32)
+    )
+    ffun.name, cfun.name = "Facet tags", "Cell tags"
+    info = {
+        "mesh_type": "from_volume",
+        "volume": str(volume),
+        "rule_data": list(rule_data or []),
+        "scale": scale,
+        "tol": tol,
+        "fiber_method": fiber_method if create_fibers else None,
+        "fiber_space": fiber_space,
+        "fiber_angle_endo": fiber_angle_endo,
+        "fiber_angle_epi": fiber_angle_epi,
+        "cardiac_geometry_version": __version__,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+    if comm.rank == 0:
+        (outdir / "markers.json").write_text(json.dumps(markers, default=utils.json_serial))
+        (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
+
+    fibers: dict = {}
+    if create_fibers:
+        from .fibers import ldrb_fibers
+
+        if fiber_method == "doste":
+            doste_markers(markers)  # a clear error without the valves
+        angles: dict[str, typing.Any] = {
+            "alpha_endo_lv": fiber_angle_endo,
+            "alpha_epi_lv": fiber_angle_epi,
+        }
+        if fiber_method == "ldrb":
+            angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
+        _, microstructure = ldrb_fibers(
+            mesh=mesh,
+            ffun=ffun,
+            cfun=cfun,
+            markers=markers,
+            fiber_method=fiber_method,
+            fiber_space=fiber_space,
+            **angles,
+        )
+        fibers = microstructure._asdict()
+
+    save_geometry(
+        path=geometry_path(outdir, io_backend),
+        mesh=mesh,
+        markers=markers,
+        info=info,
+        cfun=cfun,
+        ffun=ffun,
+        efun=None,
+        vfun=None,
+        f0=fibers.get("f0", None),
+        s0=fibers.get("s0", None),
+        n0=fibers.get("n0", None),
+    )
+    return Geometry(
+        mesh=mesh,
+        markers=markers,
+        cfun=cfun,
+        ffun=ffun,
+        efun=None,
+        vfun=None,
         f0=fibers.get("f0", None),
         s0=fibers.get("s0", None),
         n0=fibers.get("n0", None),

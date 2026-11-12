@@ -28,7 +28,7 @@ dependencies = [
     "structlog",
     "cardiac-geometries-core>=1.6.0",
     "rich-click",
-    "io4dolfinx",
+    "io4dolfinx>=1.5.1",
     "scifem",
 ]
 
@@ -37,6 +37,9 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
+pyvista = [
+    "pyvista",
+]
 dev = [
     "bump-my-version",
     "ipython",
@@ -63,6 +66,7 @@ docs = [
     "sphinx-copybutton",
 ]
 test = [
+    "pyvista",
     "pre-commit",
     "pytest",
     "pytest-cov",
