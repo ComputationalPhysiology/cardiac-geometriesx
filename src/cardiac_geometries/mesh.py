@@ -2162,7 +2162,7 @@ def from_volume(
 
     Returns
     -------
-    Geometry
+    cardiac_geometries.geometry.Geometry
         The mesh, markers, facet tags and (optionally) fibers
     """
     import io4dolfinx
