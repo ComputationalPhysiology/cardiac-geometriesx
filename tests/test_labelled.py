@@ -388,3 +388,22 @@ def test_from_volume_needs_pyvista_message(shell, tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "pyvista", None)
     with pytest.raises(ImportError, match="cardiac-geometriesx\\[pyvista\\]"):
         cgmesh.from_volume(MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces)
+
+
+def test_from_volume_single_precision_volume(shell, tmp_path):
+    # A volume stored in single precision (e.g. legacy VTK in float32) still gives a
+    # double-precision mesh, which the fiber methods need
+    import pyvista
+
+    volume, surfaces, expected = shell
+    path = MPI.COMM_WORLD.bcast(tmp_path, root=0)
+    single = path / "volume32.vtu"
+    if MPI.COMM_WORLD.rank == 0:
+        grid = pyvista.read(volume)
+        grid.points = grid.points.astype(np.float32)
+        grid.save(single)
+    MPI.COMM_WORLD.barrier()
+    geo = cgmesh.from_volume(path / "out", single, surfaces=surfaces, create_fibers=True)
+    assert geo.mesh.geometry.x.dtype == np.float64
+    assert facet_counts(geo) == expected
+    assert np.allclose(np.linalg.norm(geo.f0.x.array.reshape(-1, 3), axis=1), 1.0)

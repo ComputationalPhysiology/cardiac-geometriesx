@@ -2194,7 +2194,11 @@ def from_volume(
         raise ImportError(
             "Reading the volume needs pyvista: pip install cardiac-geometriesx[pyvista]"
         ) from e
-    mesh = io4dolfinx.read_mesh(Path(volume), comm, backend="pyvista")
+    # Double precision whatever the file stores (e.g. legacy VTK in float32): the fiber methods
+    # need it
+    mesh = io4dolfinx.read_mesh(
+        Path(volume), comm, backend="pyvista", backend_args={"dtype": np.float64}
+    )
     if mesh.topology.cell_name() != "tetrahedron":
         raise ValueError(f"The volume must be a tetrahedral mesh, got {mesh.topology.cell_name()}")
     mesh.geometry.x[:] *= scale
