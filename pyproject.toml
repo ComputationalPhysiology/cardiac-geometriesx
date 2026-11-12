@@ -37,8 +37,8 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
-meshio = [
-    "meshio",
+pyvista = [
+    "pyvista",
 ]
 dev = [
     "bump-my-version",
@@ -66,7 +66,7 @@ docs = [
     "sphinx-copybutton",
 ]
 test = [
-    "meshio",
+    "pyvista",
     "pre-commit",
     "pytest",
     "pytest-cov",

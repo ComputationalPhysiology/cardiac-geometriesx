@@ -60,94 +60,112 @@ def box():
     return points, tets, surfaces
 
 
-def counts(faces, ids, markers):
-    names = {v[0]: k for k, v in markers.items() if v[1] == 2}
-    values, n = np.unique(ids, return_counts=True)
-    return {names[v]: int(c) for v, c in zip(values, n)}
+def facet_coords(points, tets):
+    return points[labelled.boundary_faces(tets)]
 
 
-def test_label_boundary_surfaces_exact(box):
+def label_counts(names):
+    values, n = np.unique(names, return_counts=True)
+    return {str(v): int(c) for v, c in zip(values, n)}
+
+
+def test_label_facets_surfaces_exact(box):
     points, tets, surfaces = box
-    faces, ids, markers = labelled.label_boundary(points, tets, surfaces=surfaces)
-    assert len(faces) == sum(len(t) for _, t in surfaces.values())
-    assert counts(faces, ids, markers) == {k: len(t) for k, (_, t) in surfaces.items()}
+    names, matched = labelled.label_facets(facet_coords(points, tets), surfaces=surfaces)
+    assert label_counts(names) == {k: len(t) for k, (_, t) in surfaces.items()}
+    assert matched == {k: len(t) for k, (_, t) in surfaces.items()}
 
 
-def test_label_boundary_rule(box):
+def test_label_facets_rule_with_data(box):
     points, tets, surfaces = box
+    coords = facet_coords(points, tets)
+    # The rule sees each facet's vertex coordinates and the values of named point data there
+    data = {"x": coords[:, :, 0]}
 
-    def rule(faces, pts):
-        x = pts[faces][:, :, 0]
+    def rule(c, d):
+        x = d["x"]
         return np.where(
             np.all(np.isclose(x, 0.0), axis=1),
             "BASE",
             np.where(np.all(np.isclose(x, 2.0), axis=1), "EPI", "LV_ENDO"),
         )
 
-    by_rule = labelled.label_boundary(points, tets, rule=rule)
-    by_surfaces = labelled.label_boundary(points, tets, surfaces=surfaces)
-    assert counts(*by_rule) == counts(*by_surfaces)
+    by_rule, _ = labelled.label_facets(coords, rule=rule, data=data)
+    by_surfaces, _ = labelled.label_facets(coords, surfaces=surfaces)
+    assert np.array_equal(by_rule, by_surfaces)
 
 
-def test_label_boundary_marker_ids(box):
-    points, tets, surfaces = box
-    _, _, markers = labelled.label_boundary(points, tets, surfaces=surfaces)
+def test_marker_ids():
+    markers = labelled.marker_ids({"EPI", "BASE", "LV_ENDO"})
     # Fixed ids: the position in MARKER_ORDER, plus one (other names after, sorted)
     assert markers["LV_ENDO"] == (1, 2) and markers["EPI"] == (3, 2) and markers["BASE"] == (4, 2)
-    assert "RV_ENDO" not in markers
-    assert markers["Wall"] == (1, 3)
+    assert "RV_ENDO" not in markers and markers["Wall"] == (1, 3)
+    assert labelled.marker_ids({"EPI", "ZZ", "AA"})["AA"] == (9, 2)
     assert labelled.MARKER_ORDER == ["LV_ENDO", "RV_ENDO", "EPI", "BASE", "MV", "AV", "TV", "PV"]
 
 
-def test_label_boundary_unlabelled_face_errors(box):
+def test_check_labels_unlabelled(box):
     points, tets, surfaces = box
     p, t = surfaces["EPI"]
     surfaces["EPI"] = (p, t[1:])
+    names, matched = labelled.label_facets(facet_coords(points, tets), surfaces=surfaces)
+    sizes = {k: len(t) for k, (_, t) in surfaces.items()}
     with pytest.raises(ValueError, match="unlabelled: 1"):
-        labelled.label_boundary(points, tets, surfaces=surfaces)
+        labelled.check_labels(names, matched, sizes)
 
 
-def test_label_boundary_double_label_errors(box):
+def test_label_facets_double_label_errors(box):
     points, tets, surfaces = box
     p, t = surfaces["EPI"]
     surfaces["BASE"] = (p, np.vstack([surfaces["BASE"][1], t[:1]]))
     with pytest.raises(ValueError, match="2 names"):
-        labelled.label_boundary(points, tets, surfaces=surfaces)
+        labelled.label_facets(facet_coords(points, tets), surfaces=surfaces)
 
 
-def test_label_boundary_rejects_interior_face(box):
+def test_check_labels_rejects_interior_face(box):
     points, tets, surfaces = box
     faces = np.sort(np.vstack([tets[:, list(f)] for f in itertools.combinations(range(4), 3)]), 1)
     unique, n = np.unique(faces, axis=0, return_counts=True)
     interior = unique[n == 2][:1]
     p, t = surfaces["EPI"]
     surfaces["EPI"] = (p, np.vstack([t, interior]))
+    names, matched = labelled.label_facets(facet_coords(points, tets), surfaces=surfaces)
+    # The interior triangle is never tagged: no boundary facet has its vertices
+    assert label_counts(names)["EPI"] == len(t)
+    sizes = {k: len(t) for k, (_, t) in surfaces.items()}
     with pytest.raises(ValueError, match="not boundary faces: 1"):
-        labelled.label_boundary(points, tets, surfaces=surfaces)
+        labelled.check_labels(names, matched, sizes)
 
 
-def test_label_boundary_inexact_needs_tol(box):
+def test_label_facets_inexact_needs_tol(box):
     points, tets, surfaces = box
     p, t = surfaces["EPI"]
-    surfaces["EPI"] = (p + 1e-6, t)
+    surfaces["EPI"] = (
+        p + 1e-3,
+        t,
+    )  # far beyond round-off (the default matches to 1e-6 of the size)
+    names, matched = labelled.label_facets(facet_coords(points, tets), surfaces=surfaces)
+    sizes = {k: len(t) for k, (_, t) in surfaces.items()}
     with pytest.raises(ValueError, match="tol"):
-        labelled.label_boundary(points, tets, surfaces=surfaces)
+        labelled.check_labels(names, matched, sizes)
 
 
-def test_label_boundary_tol(box):
+def test_label_facets_tol(box):
     points, tets, surfaces = box
-    exact = counts(*labelled.label_boundary(points, tets, surfaces=surfaces))
+    exact, _ = labelled.label_facets(facet_coords(points, tets), surfaces=surfaces)
     p, t = surfaces["EPI"]
-    surfaces["EPI"] = (p + 1e-6, t)
-    assert counts(*labelled.label_boundary(points, tets, surfaces=surfaces, tol=1e-5)) == exact
+    surfaces["EPI"] = (p + 1e-3, t)
+    names, _ = labelled.label_facets(facet_coords(points, tets), surfaces=surfaces, tol=1e-2)
+    assert np.array_equal(names, exact)
 
 
-def test_label_boundary_one_of_surfaces_or_rule(box):
+def test_label_facets_one_of_surfaces_or_rule(box):
     points, tets, surfaces = box
+    coords = facet_coords(points, tets)
     with pytest.raises(ValueError, match="one of"):
-        labelled.label_boundary(points, tets)
+        labelled.label_facets(coords)
     with pytest.raises(ValueError, match="one of"):
-        labelled.label_boundary(points, tets, surfaces=surfaces, rule=lambda f, p: None)
+        labelled.label_facets(coords, surfaces=surfaces, rule=lambda c, d: None)
 
 
 def test_transform_markers_base_and_valves():
@@ -191,9 +209,9 @@ from cardiac_geometries.geometry import Geometry  # noqa: E402
 
 
 def make_shell(path):
-    """A tetrahedral shell written as volume.vtu and one .ply per surface (rank 0)."""
+    """A tetrahedral shell written as volume.vtu and one .ply per surface (rank 0), with pyvista."""
     import gmsh
-    import meshio
+    import pyvista
 
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
@@ -208,13 +226,14 @@ def make_shell(path):
     gmsh.model.mesh.generate(3)
     tags, coords, _ = gmsh.model.mesh.getNodes()
     points = coords.reshape(-1, 3)
-    order = np.argsort(tags)
     index = np.empty(int(tags.max()) + 1, dtype=np.int64)
-    index[tags[order]] = np.arange(len(tags))[order]
+    index[tags.astype(np.int64)] = np.arange(len(tags))
     _, nodes = gmsh.model.mesh.getElementsByType(4)
     gmsh.finalize()
     tets = index[nodes.astype(np.int64)].reshape(-1, 4)
-    meshio.write(path / "volume.vtu", meshio.Mesh(points, [("tetra", tets)]))
+    grid = pyvista.UnstructuredGrid({pyvista.CellType.TETRA: tets}, points)
+    grid.point_data["height"] = points[:, 2]
+    grid.save(path / "volume.vtu")
     faces = labelled.boundary_faces(tets)
     centre = points[faces].mean(axis=1)
     radius = np.linalg.norm(centre, axis=1)
@@ -226,7 +245,7 @@ def make_shell(path):
     files = {}
     for name in ("LV_ENDO", "EPI", "BASE"):
         files[name] = path / f"{name.lower()}.ply"
-        meshio.write(files[name], meshio.Mesh(points, [("triangle", faces[names == name])]))
+        pyvista.PolyData.from_regular_faces(points, faces[names == name]).save(files[name])
     return path / "volume.vtu", files, {n: int(np.sum(names == n)) for n in files}
 
 
@@ -256,6 +275,22 @@ def test_from_volume_markers(shell, tmp_path):
     assert facet_counts(geo) == expected
     assert geo.markers["LV_ENDO"] == (1, 2) and geo.markers["EPI"] == (3, 2)
     assert geo.markers["BASE"] == (4, 2)
+
+
+def test_from_volume_rule_data(shell, tmp_path):
+    # The rule reads the point data "height" (z) through io4dolfinx and labels by it, and by radius
+    volume, _, expected = shell
+
+    def rule(coords, data):
+        z = data["height"]
+        radius = np.linalg.norm(coords.mean(axis=1), axis=1)
+        base = np.all(np.isclose(z, 0.5, atol=1e-8), axis=1)
+        return np.where(base, "BASE", np.where(radius < 1.5, "LV_ENDO", "EPI"))
+
+    geo = cgmesh.from_volume(
+        MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, rule=rule, rule_data=["height"]
+    )
+    assert facet_counts(geo) == expected
 
 
 def test_from_volume_scale(shell, tmp_path):
@@ -348,8 +383,8 @@ def test_cli_from_volume(shell, tmp_path):
     assert facet_counts(geo) == expected
 
 
-def test_from_volume_needs_meshio_message(shell, tmp_path, monkeypatch):
+def test_from_volume_needs_pyvista_message(shell, tmp_path, monkeypatch):
     volume, surfaces, _ = shell
-    monkeypatch.setitem(sys.modules, "meshio", None)
-    with pytest.raises(ImportError, match="cardiac-geometriesx\\[meshio\\]"):
+    monkeypatch.setitem(sys.modules, "pyvista", None)
+    with pytest.raises(ImportError, match="cardiac-geometriesx\\[pyvista\\]"):
         cgmesh.from_volume(MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces)

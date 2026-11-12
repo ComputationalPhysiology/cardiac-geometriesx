@@ -4,7 +4,9 @@
 # together with the boundary surfaces (endocardium, epicardium, base, valves) as separate files. With
 # `cardiac_geometries.mesh.from_volume` such a mesh becomes a geometry with facet markers, and
 # optionally fibers, like the other geometries in this package. Every boundary face of the volume must
-# lie on exactly one of the surfaces; the surfaces are matched to the volume by their nodes.
+# lie on exactly one of the surfaces; the surfaces are matched to the volume by their nodes. The volume
+# is read with the pyvista backend of [io4dolfinx](https://github.com/scientificcomputing/io4dolfinx)
+# (any format pyvista reads, e.g. VTU or legacy VTK), already distributed over the processes.
 #
 # Use the marker names of the UK Biobank geometries (`LV_ENDO`, `RV_ENDO`, `EPI`, `BASE`, `MV`, `AV`,
 # `TV`, `PV`), so that the fiber methods find their boundaries. Here we make a small example: a thick
@@ -16,7 +18,6 @@ from mpi4py import MPI
 
 import dolfinx
 import gmsh
-import meshio
 import numpy as np
 import pyvista
 
@@ -46,7 +47,7 @@ if comm.rank == 0:
     points = coords.reshape(-1, 3)
     tets = index[gmsh.model.mesh.getElementsByType(4)[1].astype(np.int64)].reshape(-1, 4)
     gmsh.finalize()
-    meshio.write(outdir / "volume.vtu", meshio.Mesh(points, [("tetra", tets)]))
+    pyvista.UnstructuredGrid({pyvista.CellType.TETRA: tets}, points).save(outdir / "volume.vtu")
     faces = boundary_faces(tets)
     centre = points[faces].mean(axis=1)
     names = np.where(
@@ -55,8 +56,8 @@ if comm.rank == 0:
         np.where(np.linalg.norm(centre, axis=1) < 15.0, "LV_ENDO", "EPI"),
     )
     for name in ("LV_ENDO", "EPI", "BASE"):
-        meshio.write(
-            outdir / f"{name.lower()}.ply", meshio.Mesh(points, [("triangle", faces[names == name])])
+        pyvista.PolyData.from_regular_faces(points, faces[names == name]).save(
+            outdir / f"{name.lower()}.ply"
         )
 comm.barrier()
 
