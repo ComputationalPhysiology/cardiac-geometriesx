@@ -2104,6 +2104,24 @@ def _read_surfaces(surfaces: dict, scale: float) -> dict[str, tuple[np.ndarray, 
     return out
 
 
+# Names of the dolfinx timers around the stages of from_volume (see dolfinx.common.timing);
+# the fibers stage contains fenicsx-ldrb's own timers
+TIMER_READ_SURFACES = "cardiac_geometries: read surfaces"
+TIMER_READ_VOLUME = "cardiac_geometries: read volume"
+TIMER_READ_POINT_DATA = "cardiac_geometries: read point data"
+TIMER_LABEL_FACETS = "cardiac_geometries: label facets"
+TIMER_FIBERS = "cardiac_geometries: fibers"
+TIMER_SAVE = "cardiac_geometries: save"
+FROM_VOLUME_TIMERS = (
+    TIMER_READ_SURFACES,
+    TIMER_READ_VOLUME,
+    TIMER_READ_POINT_DATA,
+    TIMER_LABEL_FACETS,
+    TIMER_FIBERS,
+    TIMER_SAVE,
+)
+
+
 def from_volume(
     outdir: str | Path,
     volume,
@@ -2119,6 +2137,7 @@ def from_volume(
     fiber_angle_endo: float = 60.0,
     fiber_angle_epi: float = -60.0,
     io_backend: str = DEFAULT_IO_BACKEND,
+    petsc_options: dict | None = None,
 ) -> Geometry:
     """A geometry from a tetrahedral volume mesh and labelled boundary surfaces, e.g. a patient
     mesh made with another tool.
@@ -2159,11 +2178,15 @@ def from_volume(
         As in :func:`ukb`: fibers by the method of Bayer et al. ("ldrb") or Doste et al. ("doste")
     io_backend : str
         io4dolfinx backend for the saved geometry
+    petsc_options : dict, optional
+        PETSc options for the Laplace solves of the fiber method (fenicsx-ldrb's default if None)
 
     Returns
     -------
     cardiac_geometries.geometry.Geometry
         The mesh, markers, facet tags and (optionally) fibers
+
+    The stages are timed with the dolfinx timers in ``FROM_VOLUME_TIMERS``.
     """
     import io4dolfinx
 
@@ -2178,15 +2201,17 @@ def from_volume(
     # Surfaces are read on rank 0 (so a reading error is raised on every rank) and sent to all
     surface_data: dict | None = None
     error: Exception | None = None
-    if surfaces is not None and comm.rank == 0:
-        try:
-            surface_data = _read_surfaces(surfaces, scale)
-        except Exception as e:
-            error = e
-    error = comm.bcast(error, root=0)
-    if error is not None:
-        raise error
-    surface_data = comm.bcast(surface_data, root=0)
+    if surfaces is not None:
+        with dolfinx.common.Timer(TIMER_READ_SURFACES):
+            if comm.rank == 0:
+                try:
+                    surface_data = _read_surfaces(surfaces, scale)
+                except Exception as e:
+                    error = e
+            error = comm.bcast(error, root=0)
+            if error is not None:
+                raise error
+            surface_data = comm.bcast(surface_data, root=0)
 
     try:
         import pyvista  # noqa: F401  (io4dolfinx's pyvista backend needs it)
@@ -2196,9 +2221,10 @@ def from_volume(
         ) from e
     # Double precision whatever the file stores (e.g. legacy VTK in float32): the fiber methods
     # need it
-    mesh = io4dolfinx.read_mesh(
-        Path(volume), comm, backend="pyvista", backend_args={"dtype": np.float64}
-    )
+    with dolfinx.common.Timer(TIMER_READ_VOLUME):
+        mesh = io4dolfinx.read_mesh(
+            Path(volume), comm, backend="pyvista", backend_args={"dtype": np.float64}
+        )
     if mesh.topology.cell_name() != "tetrahedron":
         raise ValueError(f"The volume must be a tetrahedral mesh, got {mesh.topology.cell_name()}")
     mesh.geometry.x[:] *= scale
@@ -2212,17 +2238,20 @@ def from_volume(
     coords = mesh.geometry.x[geometry_dofs]
 
     data: dict[str, np.ndarray] = {}
-    for name in rule_data or []:
-        f = io4dolfinx.read_point_data(Path(volume), name, mesh, backend="pyvista")
+    if rule_data:
         from scipy.spatial import cKDTree
 
-        x = f.function_space.tabulate_dof_coordinates()
-        _, dof = cKDTree(x).query(coords.reshape(-1, 3))
-        data[name] = np.asarray(f.x.array, dtype=float)[dof].reshape(-1, 3)
+        with dolfinx.common.Timer(TIMER_READ_POINT_DATA):
+            for name in rule_data:
+                f = io4dolfinx.read_point_data(Path(volume), name, mesh, backend="pyvista")
+                x = f.function_space.tabulate_dof_coordinates()
+                _, dof = cKDTree(x).query(coords.reshape(-1, 3))
+                data[name] = np.asarray(f.x.array, dtype=float)[dof].reshape(-1, 3)
 
-    names, matched = label_facets(coords, surfaces=surface_data, rule=rule, data=data, tol=tol)
-    sizes = {k: len(t) for k, (_, t) in surface_data.items()} if surface_data else {}
-    check_labels(names, matched, sizes, comm=comm)
+    with dolfinx.common.Timer(TIMER_LABEL_FACETS):
+        names, matched = label_facets(coords, surfaces=surface_data, rule=rule, data=data, tol=tol)
+        sizes = {k: len(t) for k, (_, t) in surface_data.items()} if surface_data else {}
+        check_labels(names, matched, sizes, comm=comm)
     all_names = set().union(*comm.allgather(set(names.tolist())))
     markers = marker_ids(all_names)
 
@@ -2263,30 +2292,33 @@ def from_volume(
         }
         if fiber_method == "ldrb":
             angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
-        _, microstructure = ldrb_fibers(
-            mesh=mesh,
-            ffun=ffun,
-            cfun=cfun,
-            markers=markers,
-            fiber_method=fiber_method,
-            fiber_space=fiber_space,
-            **angles,
-        )
+        with dolfinx.common.Timer(TIMER_FIBERS):
+            _, microstructure = ldrb_fibers(
+                mesh=mesh,
+                ffun=ffun,
+                cfun=cfun,
+                markers=markers,
+                fiber_method=fiber_method,
+                fiber_space=fiber_space,
+                petsc_options=petsc_options,
+                **angles,
+            )
         fibers = microstructure._asdict()
 
-    save_geometry(
-        path=geometry_path(outdir, io_backend),
-        mesh=mesh,
-        markers=markers,
-        info=info,
-        cfun=cfun,
-        ffun=ffun,
-        efun=None,
-        vfun=None,
-        f0=fibers.get("f0", None),
-        s0=fibers.get("s0", None),
-        n0=fibers.get("n0", None),
-    )
+    with dolfinx.common.Timer(TIMER_SAVE):
+        save_geometry(
+            path=geometry_path(outdir, io_backend),
+            mesh=mesh,
+            markers=markers,
+            info=info,
+            cfun=cfun,
+            ffun=ffun,
+            efun=None,
+            vfun=None,
+            f0=fibers.get("f0", None),
+            s0=fibers.get("s0", None),
+            n0=fibers.get("n0", None),
+        )
     return Geometry(
         mesh=mesh,
         markers=markers,

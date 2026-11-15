@@ -77,6 +77,16 @@ def normalize(u):
     return u / np.linalg.norm(u, axis=0)
 
 
+# Conjugate gradients with algebraic multigrid: faster than a direct solver in serial and in
+# parallel; a solve that does not converge raises an error
+LAPLACE_PETSC_OPTIONS = {
+    "ksp_type": "cg",
+    "pc_type": "gamg",
+    "ksp_rtol": 1e-10,
+    "ksp_error_if_not_converged": True,
+}
+
+
 def laplace(
     mesh: dolfinx.mesh.Mesh,
     ffun: dolfinx.mesh.MeshTags,
@@ -108,11 +118,14 @@ def laplace(
         a,
         L,
         bcs=bcs,
-        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        petsc_options=LAPLACE_PETSC_OPTIONS,
         petsc_options_prefix="cardiac_geometriesx_laplace",
     )
     uh = problem.solve()
     assert isinstance(uh, dolfinx.fem.Function)
+    # An iterative solver meets the boundary values only to its tolerance
+    for bc in bcs:
+        bc.set(uh.x.array)
 
     if function_space != "P_1":
         W = space_from_string(function_space, mesh, dim=1)
