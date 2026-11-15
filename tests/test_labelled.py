@@ -407,3 +407,43 @@ def test_from_volume_single_precision_volume(shell, tmp_path):
     assert geo.mesh.geometry.x.dtype == np.float64
     assert facet_counts(geo) == expected
     assert np.allclose(np.linalg.norm(geo.f0.x.array.reshape(-1, 3), axis=1), 1.0)
+
+
+def timer_count(name):
+    import dolfinx
+
+    try:
+        return dolfinx.common.timing(name)[0]
+    except RuntimeError:  # never started
+        return 0
+
+
+def test_from_volume_records_stage_timers(shell, tmp_path):
+    volume, surfaces, _ = shell
+    stages = [name for name in cgmesh.FROM_VOLUME_TIMERS if "point data" not in name]
+    before = [timer_count(name) for name in stages]
+    cgmesh.from_volume(
+        MPI.COMM_WORLD.bcast(tmp_path, root=0), volume, surfaces=surfaces, create_fibers=True
+    )
+    assert [timer_count(name) - b for name, b in zip(stages, before)] == [1] * len(stages)
+
+
+def test_from_volume_passes_petsc_options(shell, tmp_path):
+    # One unpreconditioned CG iteration cannot converge: the error shows the options reached PETSc
+    from petsc4py import PETSc
+
+    volume, surfaces, _ = shell
+    impossible = {
+        "ksp_type": "cg",
+        "pc_type": "none",
+        "ksp_max_it": 1,
+        "ksp_error_if_not_converged": True,
+    }
+    with pytest.raises(PETSc.Error):
+        cgmesh.from_volume(
+            MPI.COMM_WORLD.bcast(tmp_path, root=0),
+            volume,
+            surfaces=surfaces,
+            create_fibers=True,
+            petsc_options=impossible,
+        )
