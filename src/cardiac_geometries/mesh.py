@@ -24,6 +24,27 @@ logger = get_logger()
 
 UKB_GEOMETRIES = ("biv", "biv-closed", "lv", "lv-closed")
 
+# Names of the dolfinx timers around the stages of ukb and from_volume (see
+# dolfinx.common.timing); the fibers stage contains fenicsx-ldrb's own timers
+TIMER_MESH = "cardiac_geometries: mesh"
+TIMER_READ_MESH = "cardiac_geometries: read mesh"
+TIMER_REGIONS = "cardiac_geometries: regions"
+TIMER_READ_SURFACES = "cardiac_geometries: read surfaces"
+TIMER_READ_VOLUME = "cardiac_geometries: read volume"
+TIMER_READ_POINT_DATA = "cardiac_geometries: read point data"
+TIMER_LABEL_FACETS = "cardiac_geometries: label facets"
+TIMER_FIBERS = "cardiac_geometries: fibers"
+TIMER_SAVE = "cardiac_geometries: save"
+UKB_TIMERS = (TIMER_MESH, TIMER_READ_MESH, TIMER_REGIONS, TIMER_FIBERS, TIMER_SAVE)
+FROM_VOLUME_TIMERS = (
+    TIMER_READ_SURFACES,
+    TIMER_READ_VOLUME,
+    TIMER_READ_POINT_DATA,
+    TIMER_LABEL_FACETS,
+    TIMER_FIBERS,
+    TIMER_SAVE,
+)
+
 
 def transform_markers(
     markers: dict[str, tuple[int, int]], clipped: bool = False
@@ -119,6 +140,39 @@ def doste_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
             "pv": [markers["PV"][0]],
         }
     return transformed
+
+
+def _ukb_regions(gmsh_geometry, outdir: Path, case: str, rv_regions: bool, rv_septum_fraction):
+    """The AHA (and RV) region cell tags of a UKB BiV mesh, and the markers with them."""
+    from .aha import biv_aha
+
+    if gmsh_geometry.ffun is None:
+        raise ValueError("AHA segments need the facet tags of the mesh")
+    landmarks_file = outdir / f"landmarks_{case}.json"
+    if not landmarks_file.exists():
+        raise ValueError(
+            f"AHA segments need the landmarks in {landmarks_file}, "
+            "written by ukb-atlas >= 2.2 (ukb-atlas surf)"
+        )
+    landmarks = json.loads(landmarks_file.read_text())
+    if rv_regions:
+        from .aha import biv_regions
+
+        assert rv_septum_fraction is not None
+        cfun, aha_markers = biv_regions(
+            gmsh_geometry.mesh,
+            gmsh_geometry.ffun,
+            gmsh_geometry.markers,
+            landmarks,
+            rv_septum_fraction=rv_septum_fraction,
+        )
+    else:
+        cfun, aha_markers = biv_aha(
+            gmsh_geometry.mesh, gmsh_geometry.ffun, gmsh_geometry.markers, landmarks
+        )
+    # The AHA tags replace the cell tags
+    markers = {k: v for k, v in gmsh_geometry.markers.items() if v[1] != 3} | aha_markers
+    return cfun, markers
 
 
 def ukb(
@@ -227,6 +281,12 @@ def ukb(
     cardiac_geometries.geometry.Geometry
         A Geometry with the mesh, markers, markers functions and fibers.
 
+    Notes
+    -----
+    The stages are timed with the dolfinx timers in ``UKB_TIMERS``: meshing with
+    ukb-atlas, reading the mesh, the regions (only with `aha`), the fibers (which
+    contain fenicsx-ldrb's own timers) and saving every file written after the fibers.
+
     """
     if geometry not in UKB_GEOMETRIES:
         raise ValueError(f"Unknown geometry {geometry!r}, expected one of {UKB_GEOMETRIES}")
@@ -258,51 +318,52 @@ def ukb(
         )
         raise ImportError(msg) from e
 
-    if comm.rank == 0:
-        surf_args = [
-            "surf",
-            str(outdir),
-            "--mode",
-            str(mode),
-            "--std",
-            str(std),
-            "--case",
-            case,
-            "--geometry",
-            geometry,
-            "--refine",
-            str(refine),
-        ]
-        if use_burns:
-            surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
+    with dolfinx.common.Timer(TIMER_MESH):
+        if comm.rank == 0:
+            surf_args = [
+                "surf",
+                str(outdir),
+                "--mode",
+                str(mode),
+                "--std",
+                str(std),
+                "--case",
+                case,
+                "--geometry",
+                geometry,
+                "--refine",
+                str(refine),
+            ]
+            if use_burns:
+                surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
 
-        ukb.cli.main(surf_args)
-        mesh_args = [
-            "mesh",
-            str(outdir),
-            "--case",
-            case,
-            "--char_length_max",
-            str(char_length_max),
-            "--char_length_min",
-            str(char_length_min),
-            "--order",
-            str(order),
-        ]
-        if clipped:
-            ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
-            mesh_args.append("--clipped")
-        print(comm.rank)
+            ukb.cli.main(surf_args)
+            mesh_args = [
+                "mesh",
+                str(outdir),
+                "--case",
+                case,
+                "--char_length_max",
+                str(char_length_max),
+                "--char_length_min",
+                str(char_length_min),
+                "--order",
+                str(order),
+            ]
+            if clipped:
+                ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
+                mesh_args.append("--clipped")
 
-        ukb.cli.main(mesh_args)
-    comm.barrier()
+            ukb.cli.main(mesh_args)
+        comm.barrier()
     outdir = Path(outdir)
     if clipped:
         mesh_name = outdir / f"{case}_clipped.msh"
     else:
         mesh_name = outdir / f"{case}.msh"
 
-    gmsh_geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
+    with dolfinx.common.Timer(TIMER_READ_MESH):
+        gmsh_geometry = utils.gmsh2dolfin(comm=comm, msh_file=mesh_name, ghost_mode=ghost_mode)
     info = {
         "mode": mode,
         "std": std,
@@ -328,82 +389,60 @@ def ukb(
     }
     cfun, markers = gmsh_geometry.cfun, gmsh_geometry.markers
     if aha:
-        from .aha import biv_aha
-
-        if gmsh_geometry.ffun is None:
-            raise ValueError("AHA segments need the facet tags of the mesh")
-        landmarks_file = outdir / f"landmarks_{case}.json"
-        if not landmarks_file.exists():
-            raise ValueError(
-                f"AHA segments need the landmarks in {landmarks_file}, "
-                "written by ukb-atlas >= 2.2 (ukb-atlas surf)"
+        with dolfinx.common.Timer(TIMER_REGIONS):
+            cfun, markers = _ukb_regions(
+                gmsh_geometry, outdir, case, rv_regions, rv_septum_fraction
             )
-        landmarks = json.loads(landmarks_file.read_text())
-        if rv_regions:
-            from .aha import biv_regions
-
-            assert rv_septum_fraction is not None
-            cfun, aha_markers = biv_regions(
-                gmsh_geometry.mesh,
-                gmsh_geometry.ffun,
-                gmsh_geometry.markers,
-                landmarks,
-                rv_septum_fraction=rv_septum_fraction,
-            )
-        else:
-            cfun, aha_markers = biv_aha(
-                gmsh_geometry.mesh, gmsh_geometry.ffun, gmsh_geometry.markers, landmarks
-            )
-        # The AHA tags replace the cell tags
-        markers = {k: v for k, v in markers.items() if v[1] != 3} | aha_markers
-    if comm.rank == 0:
-        (outdir / "markers.json").write_text(json.dumps(markers, default=utils.json_serial))
-        (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
 
     fibers = {}
+    system = None
     if create_fibers:
         from .fibers import ldrb_fibers
 
         angles = {"alpha_endo_lv": fiber_angle_endo, "alpha_epi_lv": fiber_angle_epi}
         if fiber_method == "ldrb":
             angles |= {"beta_endo_lv": 0, "beta_epi_lv": 0}
-        system, microstructure = ldrb_fibers(
-            mesh=gmsh_geometry.mesh,
-            ffun=gmsh_geometry.ffun,
-            cfun=gmsh_geometry.cfun,
-            markers=gmsh_geometry.markers,
-            clipped=clipped,
-            fiber_method=fiber_method,
-            fiber_space=fiber_space,
-            **angles,
-        )
-
+        with dolfinx.common.Timer(TIMER_FIBERS):
+            system, microstructure = ldrb_fibers(
+                mesh=gmsh_geometry.mesh,
+                ffun=gmsh_geometry.ffun,
+                cfun=gmsh_geometry.cfun,
+                markers=gmsh_geometry.markers,
+                clipped=clipped,
+                fiber_method=fiber_method,
+                fiber_space=fiber_space,
+                **angles,
+            )
         fibers = microstructure._asdict()
 
-        for k, v in system._asdict().items():
-            if v is None:
-                continue
-            if fiber_space.startswith("Q"):
-                # Cannot visualize Quadrature spaces yet
-                continue
+    with dolfinx.common.Timer(TIMER_SAVE):
+        if system is not None and not fiber_space.startswith("Q"):
+            # Cannot visualize Quadrature spaces yet
+            for k, v in system._asdict().items():
+                if v is None:
+                    continue
+                logger.debug(f"Write {k}: {v}")
+                with dolfinx.io.VTXWriter(comm, outdir / f"{k}-viz.bp", [v], engine="BP4") as vtx:
+                    vtx.write(0.0)
 
-            logger.debug(f"Write {k}: {v}")
-            with dolfinx.io.VTXWriter(comm, outdir / f"{k}-viz.bp", [v], engine="BP4") as vtx:
-                vtx.write(0.0)
-
-    save_geometry(
-        path=geometry_path(outdir, io_backend),
-        mesh=gmsh_geometry.mesh,
-        markers=markers,
-        info=info,
-        cfun=cfun,
-        ffun=gmsh_geometry.ffun,
-        efun=gmsh_geometry.efun,
-        vfun=gmsh_geometry.vfun,
-        f0=fibers.get("f0", None),
-        s0=fibers.get("s0", None),
-        n0=fibers.get("n0", None),
-    )
+        save_geometry(
+            path=geometry_path(outdir, io_backend),
+            mesh=gmsh_geometry.mesh,
+            markers=markers,
+            info=info,
+            cfun=cfun,
+            ffun=gmsh_geometry.ffun,
+            efun=gmsh_geometry.efun,
+            vfun=gmsh_geometry.vfun,
+            f0=fibers.get("f0", None),
+            s0=fibers.get("s0", None),
+            n0=fibers.get("n0", None),
+        )
+        # Written last, so a folder with info.json holds a complete result (see reuse_mesh)
+        if comm.rank == 0:
+            (outdir / "markers.json").write_text(json.dumps(markers, default=utils.json_serial))
+            (outdir / "info.json").write_text(json.dumps(info, default=utils.json_serial))
+        comm.barrier()
     # geo = Geometry.from_folder(comm=comm, folder=outdir, ghost_mode=ghost_mode)
     # return geo
     return Geometry(
@@ -2102,24 +2141,6 @@ def _read_surfaces(surfaces: dict, scale: float) -> dict[str, tuple[np.ndarray, 
             np.asarray(surface.regular_faces, dtype=np.int64),
         )
     return out
-
-
-# Names of the dolfinx timers around the stages of from_volume (see dolfinx.common.timing);
-# the fibers stage contains fenicsx-ldrb's own timers
-TIMER_READ_SURFACES = "cardiac_geometries: read surfaces"
-TIMER_READ_VOLUME = "cardiac_geometries: read volume"
-TIMER_READ_POINT_DATA = "cardiac_geometries: read point data"
-TIMER_LABEL_FACETS = "cardiac_geometries: label facets"
-TIMER_FIBERS = "cardiac_geometries: fibers"
-TIMER_SAVE = "cardiac_geometries: save"
-FROM_VOLUME_TIMERS = (
-    TIMER_READ_SURFACES,
-    TIMER_READ_VOLUME,
-    TIMER_READ_POINT_DATA,
-    TIMER_LABEL_FACETS,
-    TIMER_FIBERS,
-    TIMER_SAVE,
-)
 
 
 def from_volume(
