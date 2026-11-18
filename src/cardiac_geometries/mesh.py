@@ -142,6 +142,59 @@ def doste_markers(markers: dict[str, tuple[int, int]]) -> dict[str, list[int]]:
     return transformed
 
 
+# The info.json entries that must match for ukb(reuse_mesh=True) to read an earlier mesh
+REUSE_KEYS = (
+    "mode",
+    "std",
+    "case",
+    "clipped",
+    "char_length_max",
+    "char_length_min",
+    "refine",
+    "order",
+    "geometry",
+    "use_burns",
+)
+
+
+def _check_reuse(outdir: Path, expected: dict, aha: bool, comm: MPI.Comm) -> None:
+    """Check on rank 0 that `outdir` holds a mesh made with `expected`; every rank raises if not."""
+    error = None
+    if comm.rank == 0:
+        error = _reuse_error(outdir, expected, aha)
+    error = comm.bcast(error, root=0)
+    if error is not None:
+        kind, msg = error
+        raise {"missing": FileNotFoundError, "mismatch": ValueError}[kind](msg)
+
+
+def _reuse_error(outdir: Path, expected: dict, aha: bool) -> tuple[str, str] | None:
+    case = expected["case"]
+    msh = outdir / (f"{case}_clipped.msh" if expected["clipped"] else f"{case}.msh")
+    needed = [msh, outdir / "info.json"]
+    if aha:
+        needed.append(outdir / f"landmarks_{case}.json")
+    for path in needed:
+        if not path.exists():
+            return (
+                "missing",
+                f"reuse_mesh=True needs {path}; run ukb() once on {outdir} without reuse_mesh",
+            )
+    info = json.loads((outdir / "info.json").read_text())
+    differ = [
+        f"{key}: {info.get(key)!r} in info.json, {expected[key]!r} now"
+        for key in REUSE_KEYS
+        if info.get(key) != expected[key]
+    ]
+    if differ:
+        return (
+            "mismatch",
+            f"The mesh in {outdir} was made with other parameters ({'; '.join(differ)}); "
+            "call ukb() without reuse_mesh to make a new one",
+        )
+    return None
+
+
 def _ukb_regions(gmsh_geometry, outdir: Path, case: str, rv_regions: bool, rv_septum_fraction):
     """The AHA (and RV) region cell tags of a UKB BiV mesh, and the markers with them."""
     from .aha import biv_aha
@@ -199,6 +252,7 @@ def ukb(
     aha: bool = False,
     rv_regions: bool = False,
     rv_septum_fraction: float | None = None,
+    reuse_mesh: bool = False,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -275,6 +329,13 @@ def ukb(
         from the RV side, that belongs to the RV, in [0, 1]: 0 gives the whole septum to
         the LV, 1 to the RV, 0.5 splits it at the middle (Cobiveco) and 1/3 approximates
         Doste et al. (2019). Only allowed with `rv_regions`. By default None, meaning 0.5
+    reuse_mesh : bool, optional
+        If True, do not run ukb-atlas but read the mesh (and the landmarks) that an
+        earlier call wrote to `outdir`. The earlier call's ``info.json`` must have the
+        same `mode`, `std`, `case`, `clipped`, `char_length_max`, `char_length_min`,
+        `refine`, `order`, `geometry` and `use_burns`, otherwise a ValueError is raised;
+        a missing file raises a FileNotFoundError. The fiber and region arguments may
+        differ. By default False (always make a new mesh)
 
     Returns
     -------
@@ -318,44 +379,63 @@ def ukb(
         )
         raise ImportError(msg) from e
 
-    with dolfinx.common.Timer(TIMER_MESH):
-        if comm.rank == 0:
-            surf_args = [
-                "surf",
-                str(outdir),
-                "--mode",
-                str(mode),
-                "--std",
-                str(std),
-                "--case",
-                case,
-                "--geometry",
-                geometry,
-                "--refine",
-                str(refine),
-            ]
-            if use_burns:
-                surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
+    if reuse_mesh:
+        _check_reuse(
+            Path(outdir),
+            dict(
+                mode=mode,
+                std=std,
+                case=case,
+                clipped=clipped,
+                char_length_max=char_length_max,
+                char_length_min=char_length_min,
+                refine=refine,
+                order=order,
+                geometry=geometry,
+                use_burns=use_burns,
+            ),
+            aha=aha,
+            comm=comm,
+        )
+    else:
+        with dolfinx.common.Timer(TIMER_MESH):
+            if comm.rank == 0:
+                surf_args = [
+                    "surf",
+                    str(outdir),
+                    "--mode",
+                    str(mode),
+                    "--std",
+                    str(std),
+                    "--case",
+                    case,
+                    "--geometry",
+                    geometry,
+                    "--refine",
+                    str(refine),
+                ]
+                if use_burns:
+                    surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
 
-            ukb.cli.main(surf_args)
-            mesh_args = [
-                "mesh",
-                str(outdir),
-                "--case",
-                case,
-                "--char_length_max",
-                str(char_length_max),
-                "--char_length_min",
-                str(char_length_min),
-                "--order",
-                str(order),
-            ]
-            if clipped:
-                ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
-                mesh_args.append("--clipped")
+                ukb.cli.main(surf_args)
+                mesh_args = [
+                    "mesh",
+                    str(outdir),
+                    "--case",
+                    case,
+                    "--char_length_max",
+                    str(char_length_max),
+                    "--char_length_min",
+                    str(char_length_min),
+                    "--order",
+                    str(order),
+                ]
+                if clipped:
+                    ukb.cli.main(["clip", str(outdir), "--case", case, "--smooth"])
+                    mesh_args.append("--clipped")
 
-            ukb.cli.main(mesh_args)
-        comm.barrier()
+                ukb.cli.main(mesh_args)
+            comm.barrier()
     outdir = Path(outdir)
     if clipped:
         mesh_name = outdir / f"{case}_clipped.msh"

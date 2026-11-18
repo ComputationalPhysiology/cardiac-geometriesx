@@ -56,3 +56,27 @@ def test_ukb_save_writes_json_after_fibers(tmp_path):
     viz = (path / "f0-viz.bp").stat().st_mtime
     assert (path / "markers.json").stat().st_mtime >= viz
     assert (path / "info.json").stat().st_mtime >= viz
+
+
+def test_ukb_reuse_mesh_same_mesh_without_meshing(tmp_path):
+    path = shared_path(tmp_path)
+    first = mesh.ukb(path, create_fibers=False, aha=True, **CHAR_LENGTH)
+    n = timer_count(mesh.TIMER_MESH)
+    again = mesh.ukb(path, create_fibers=False, aha=True, reuse_mesh=True, **CHAR_LENGTH)
+    assert timer_count(mesh.TIMER_MESH) == n
+    cells = again.mesh.topology.index_map(3).size_global
+    assert cells == first.mesh.topology.index_map(3).size_global
+    assert again.markers == first.markers
+
+
+def test_ukb_reuse_mesh_missing_files(tmp_path):
+    with pytest.raises(FileNotFoundError, match="ED.msh"):
+        mesh.ukb(shared_path(tmp_path), reuse_mesh=True)
+
+
+def test_ukb_reuse_mesh_rejects_other_parameters(tmp_path):
+    path = shared_path(tmp_path)
+    mesh.ukb(path, create_fibers=False, **CHAR_LENGTH)
+    with pytest.raises(ValueError, match="char_length_max") as error:
+        mesh.ukb(path, char_length_max=4.0, char_length_min=5.0, reuse_mesh=True)
+    assert "4.0" in str(error.value) and "5.0" in str(error.value)
