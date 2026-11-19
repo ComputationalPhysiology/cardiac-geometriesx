@@ -30,6 +30,7 @@ dependencies = [
     "rich-click",
     "io4dolfinx>=1.5.1",
     "scifem",
+    "scipy",
 ]
 
 [project.readme]

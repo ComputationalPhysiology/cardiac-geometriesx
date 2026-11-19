@@ -266,26 +266,13 @@ def aha_markers() -> dict[str, tuple[int, int]]:
     return markers
 
 
-def _nearest(
-    points: np.ndarray, targets: np.ndarray, chunk: int = 2048
-) -> tuple[np.ndarray, np.ndarray]:
-    """Distance to, and index of, the nearest of ``targets`` for each of ``points``."""
-    dist = np.empty(len(points))
-    index = np.empty(len(points), dtype=np.int64)
-    for start in range(0, len(points), chunk):
-        p = points[start : start + chunk]
-        d2 = (
-            np.sum(p**2, axis=1)[:, None]
-            - 2.0 * p @ targets.T
-            + np.sum(targets**2, axis=1)[None, :]
-        )
-        index[start : start + chunk] = np.argmin(d2, axis=1)
-        # The expanded form loses digits (identical points come out ~1e-5 apart): recompute the
-        # distance
-        dist[start : start + chunk] = np.linalg.norm(
-            p - targets[index[start : start + chunk]], axis=1
-        )
-    return dist, index
+def _nearest(points: np.ndarray, targets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Distance to, and index of, the nearest of ``targets`` for each of ``points`` (a k-d tree,
+    so the cost grows like n log m rather than n m)."""
+    from scipy.spatial import cKDTree
+
+    dist, index = cKDTree(targets).query(points)
+    return np.asarray(dist, dtype=float), np.asarray(index, dtype=np.int64)
 
 
 def _crossings(s: np.ndarray, level: float) -> list[tuple[int, float]]:
@@ -704,16 +691,35 @@ def _biv_cells(
     }
 
 
+# Conjugate gradients with algebraic multigrid for the transventricular Laplace problem
+TRANSVENTRICULAR_PETSC_OPTIONS = {
+    "ksp_type": "cg",
+    "pc_type": "gamg",
+    "ksp_rtol": 1e-10,
+    "ksp_error_if_not_converged": True,
+}
+
+
 def transventricular(
-    mesh: dolfinx.mesh.Mesh, ffun: dolfinx.mesh.MeshTags, markers: dict[str, Any]
+    mesh: dolfinx.mesh.Mesh,
+    ffun: dolfinx.mesh.MeshTags,
+    markers: dict[str, Any],
+    petsc_options: dict[str, Any] | None = None,
 ) -> dolfinx.fem.Function:
     """The transventricular Laplace solution (P1): 0 on the RV endocardium (``RV_ENDO``), 1 on
     the LV endocardium (``LV_ENDO``) and zero flux elsewhere. This is the transventricular
     coordinate of Cobiveco (Schuler et al. 2021), whose 0.5 level runs through the middle of the
     septum. Doste et al. (2019) solve a related problem (-2 on the LV and +1 on the RV
     endocardium, 0 on the epicardium) whose zero level gives one third of the septum to the RV;
-    ``rv_septum_fraction=1/3`` in :func:`biv_regions` approximates that split."""
+    ``rv_septum_fraction=1/3`` in :func:`biv_regions` approximates that split.
+
+    The default solver is conjugate gradients with algebraic multigrid (PETSc's GAMG) to a
+    relative tolerance of 1e-10, as in fenicsx-ldrb; pass `petsc_options` to change it. The
+    Dirichlet values are set exactly after the solve."""
     from dolfinx.fem.petsc import LinearProblem
+
+    if petsc_options is None:
+        petsc_options = TRANSVENTRICULAR_PETSC_OPTIONS
 
     missing = [name for name in ("RV_ENDO", "LV_ENDO") if name not in markers]
     if missing:
@@ -735,11 +741,13 @@ def transventricular(
         ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx,
         zero * v * ufl.dx,
         bcs=bcs,
-        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        petsc_options=petsc_options,
         petsc_options_prefix="cardiac_geometriesx_transventricular",
     )
     uh = problem.solve()
     assert isinstance(uh, dolfinx.fem.Function)
+    for bc in bcs:
+        bc.set(uh.x.array)
     uh.x.scatter_forward()
     return uh
 
