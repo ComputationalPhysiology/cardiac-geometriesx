@@ -371,3 +371,23 @@ def test_biv_regions_insertion_band_is_rv(ukb_regions):
     values = geo.cfun.values[:ncells]
     lv_tagged = band & (values <= 17)
     assert MPI.COMM_WORLD.allreduce(int(lv_tagged.sum())) == 0
+
+
+def test_nearest_matches_brute_force():
+    rng = np.random.default_rng(1)
+    points, targets = rng.normal(size=(500, 3)), rng.normal(size=(300, 3))
+    dist, index = aha._nearest(points, targets)
+    d = np.linalg.norm(points[:, None, :] - targets[None, :, :], axis=2)
+    assert np.array_equal(index, d.argmin(axis=1))
+    assert np.allclose(dist, d.min(axis=1), rtol=0, atol=1e-12)
+    # A point on a target is at distance 0 (the free-wall/septum split relies on it)
+    assert aha._nearest(targets[:5], targets)[0].max() == 0.0
+
+
+def test_transventricular_iterative_matches_direct(ukb_regions):
+    _, geo, _ = ukb_regions
+    u = aha.transventricular(geo.mesh, geo.ffun, geo.markers)
+    lu = aha.transventricular(
+        geo.mesh, geo.ffun, geo.markers, petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
+    )
+    assert np.allclose(u.x.array, lu.x.array, rtol=0, atol=1e-8)
