@@ -69,6 +69,15 @@ def app():
     show_default=True,
 )
 @click.option(
+    "--score",
+    multiple=True,
+    type=float,
+    help=(
+        "PCA score of one mode, in standard deviations; repeat it for modes 0, 1, 2, ... "
+        "Replaces --mode and --std"
+    ),
+)
+@click.option(
     "--std",
     default=1.5,
     type=float,
@@ -228,6 +237,7 @@ def ukb(
     rv_regions: bool = False,
     rv_septum_fraction: float | None = None,
     io_backend: str = DEFAULT_IO_BACKEND,
+    score: tuple[float, ...] = (),
 ):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True)
@@ -253,6 +263,7 @@ def ukb(
         aha=aha,
         rv_regions=rv_regions,
         rv_septum_fraction=rv_septum_fraction,
+        score=list(score) or None,
     )
 
 
