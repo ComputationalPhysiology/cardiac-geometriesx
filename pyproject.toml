@@ -62,7 +62,7 @@ docs = [
     "trame-vuetify",
     "ipywidgets",
     "fenicsx-ldrb>=0.3.0",
-    "ukb-atlas>=2.2.0",
+    "ukb-atlas>=2.2.1",
     "sphinx-codeautolink",
     "sphinx-copybutton",
 ]
@@ -71,7 +71,7 @@ test = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ukb-atlas[pyvista]>=2.2.0",
+    "ukb-atlas[pyvista]>=2.2.1",
     "fenicsx-ldrb>=0.3.0",
 ]
 gui = [

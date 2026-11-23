@@ -154,6 +154,7 @@ REUSE_KEYS = (
     "order",
     "geometry",
     "use_burns",
+    "score",
 )
 
 
@@ -253,6 +254,7 @@ def ukb(
     rv_regions: bool = False,
     rv_septum_fraction: float | None = None,
     reuse_mesh: bool = False,
+    score: typing.Sequence[float] | None = None,
 ) -> Geometry:
     """Create a mesh from the UK-Biobank atlas using
     the ukb-atlas package.
@@ -333,9 +335,13 @@ def ukb(
         If True, do not run ukb-atlas but read the mesh (and the landmarks) that an
         earlier call wrote to `outdir`. The earlier call's ``info.json`` must have the
         same `mode`, `std`, `case`, `clipped`, `char_length_max`, `char_length_min`,
-        `refine`, `order`, `geometry` and `use_burns`, otherwise a ValueError is raised;
+        `refine`, `order`, `geometry`, `use_burns` and `score`, otherwise a ValueError is raised;
         a missing file raises a FileNotFoundError. The fiber and region arguments may
         differ. By default False (always make a new mesh)
+    score : Sequence[float] | None, optional
+        PCA scores of the shape, in standard deviations, one per mode from mode 0 (passed to
+        ukb-atlas as ``--score``). When given they replace `mode` and `std`, so shapes that
+        combine several modes can be made. By default None
 
     Returns
     -------
@@ -379,6 +385,9 @@ def ukb(
         )
         raise ImportError(msg) from e
 
+    if score is not None:
+        score = [float(s) for s in score]
+
     if reuse_mesh:
         _check_reuse(
             Path(outdir),
@@ -393,6 +402,7 @@ def ukb(
                 order=order,
                 geometry=geometry,
                 use_burns=use_burns,
+                score=score,
             ),
             aha=aha,
             comm=comm,
@@ -416,6 +426,8 @@ def ukb(
                 ]
                 if use_burns:
                     surf_args.extend(["--use-burns", "--burns-path", str(burns_path)])
+                if score is not None:
+                    surf_args.extend(["--score", *map(str, score)])
 
                 ukb.cli.main(surf_args)
                 mesh_args = [
@@ -462,6 +474,7 @@ def ukb(
         "clipped": clipped,
         "timestamp": datetime.datetime.now().isoformat(),
         "use_burns": use_burns,
+        "score": score,
         "ghost_mode": ghost_mode.name,
         "aha": aha,
         "rv_regions": rv_regions,
